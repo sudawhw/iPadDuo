@@ -1011,7 +1011,9 @@
         tpCancel();
         if (Date.now() - (tp.errorAt || 0) > 1800) {
           tp.errorAt = Date.now();
-          toast(m.err === 'stale-frame' ? '窗口已变化，正在刷新画面，请重试' : m.err === 'input-busy' ? '另一台设备正在操作，请稍候' : '输入连接正在恢复…', true);
+          var covered = /^covered:/.test(m.err || '') ? m.err.slice(8) : '';
+          toast(covered ? 'Mac 上「' + covered + '」的窗口挡在这里，已取消点击：请先在 Mac 上处理它' :
+            m.err === 'stale-frame' ? '窗口已变化，正在刷新画面，请重试' : m.err === 'input-busy' ? '另一台设备正在操作，请稍候' : '输入连接正在恢复…', true);
         }
       }
     };
