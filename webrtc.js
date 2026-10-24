@@ -8,6 +8,7 @@
 
 const { spawn: spawnProcess } = require('child_process');
 const crypto = require('crypto');
+const { captureError } = require('./input');
 
 let ndc = null;
 try { ndc = require('node-datachannel'); } catch (e) { /* 可选依赖：没装就只用 JPEG 推流 */ }
@@ -79,7 +80,11 @@ function createWebRTC(opts) {
         let h;
         try { h = JSON.parse(buf.subarray(0, i).toString()); } catch (e) { if (child) child.kill(); return; }
         buf = buf.subarray(i + 1);
-        if (!h.ok) { log('  h264 采集：' + (h.err || '未知错误')); continue; } // 采集中断由 helper 自动重建，不让 iPad 退回 JPEG
+        if (!h.ok) {
+          // 权限被拒要告诉 iPad；其它采集中断由 helper 自动重建，不让 iPad 退回 JPEG
+          if (captureError(h.err) === 'screen-permission') { broadcast({ t: 'rtc-error', err: 'screen-permission' }); continue; }
+          log('  h264 采集：' + (h.err || '未知错误')); continue;
+        }
         if (h.kind === 'health' || h.kind === 'virtual') continue;
         if (h.kind === 'moved') { broadcast({ t: 'rtc-moved', done: !!h.done, app: h.app || '' }); continue; }
         if (h.kind === 'meta') { updateMeta(h); continue; }

@@ -8,6 +8,12 @@ const GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 const KEY_RE = /^[a-z0-9+⌘⇧⌥⌃\-=\[\];',./`\\ ]{1,40}$/i;
 const CLIENT_RE = /^[a-z0-9-]{8,80}$/i;
 
+// 屏幕录制权限被拒（包括 macOS 定期复核时被关掉）时 ScreenCaptureKit 只返回一句本地化的 TCC 错误：统一归为 screen-permission
+function captureError(err) {
+  const e = String(err || 'capture');
+  return /TCC|拒绝|declined|denied|not authori[sz]ed|permission/i.test(e) ? 'screen-permission' : e;
+}
+
 function createInput(opts) {
   const { helperBin, isHelperReady, cacheDir } = opts;
   const spawn = opts.spawn || spawnProcess;
@@ -180,7 +186,7 @@ function createInput(opts) {
         capWaiter = (line) => {
           clearTimeout(t); let meta;
           try { meta = JSON.parse(line); } catch (e) { return resolve({ error: 'parse' }); }
-          if (!meta.ok) return resolve({ error: meta.err || 'capture' });
+          if (!meta.ok) return resolve({ error: captureError(meta.err) });
           fs.readFile(file, (error, jpg) => {
             if (error) return resolve({ error: 'read' });
             meta.frameId = epoch + '-' + (++sequence);
@@ -209,7 +215,7 @@ function createInput(opts) {
       capWaiter = (line) => {
         clearTimeout(t); let meta;
         try { meta = JSON.parse(line); } catch (e) { return resolve({ error: 'parse' }); }
-        if (!meta.ok) return resolve({ error: meta.err || 'capture' });
+        if (!meta.ok) return resolve({ error: captureError(meta.err) });
         fs.readFile(file, (error, jpg) => resolve(error ? { error: 'read' } : { jpg, meta }));
       };
       write(c, 'thumb ' + w + ' ' + bundle + ' ' + file);
@@ -269,7 +275,7 @@ function createInput(opts) {
         let h; try { h = JSON.parse(g.buf.subarray(0, i).toString()); } catch (e) { if (g.child) g.child.kill(); return; }
         g.buf = g.buf.subarray(i + 1); g.lastHealth = Date.now();
         if (h.kind === 'health') { broadcast(g, { t: 'screenhealth', at: Date.now() }); continue; }
-        if (!h.ok) { broadcast(g, { t: 'screenerr', err: h.err || 'capture' }); continue; }
+        if (!h.ok) { broadcast(g, { t: 'screenerr', err: captureError(h.err) }); continue; }
         if (!Number.isSafeInteger(h.bytes) || h.bytes < 1 || h.bytes > 12 * 1024 * 1024) { if (g.child) g.child.kill(); return; }
         g.header = h;
       }
@@ -388,4 +394,4 @@ function createInput(opts) {
   return { upgrade, handle, front, frame, thumb, typeText, close, clientId, registerMeta, setRTC: (r) => { rtc = r; }, key: (k) => KEY_RE.test(k) && cmd('key ' + k),
     status: () => ({ sessions: sessions.size, streams: [...streams.values()].map((g) => ({ profile: g.key, viewers: g.subs.size, ...g.params, healthy: !!g.child && Date.now() - g.lastHealth < 10000 })) }) };
 }
-module.exports = { createInput };
+module.exports = { createInput, captureError };

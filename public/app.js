@@ -1996,7 +1996,12 @@
     x.onload = function () {
       if (scr.xhr === x) scr.xhr = null;
       if (!scr.on || generation !== scr.generation || scr.streaming) return;
-      if (x.status !== 200) { scrMsg(x.status === 401 ? '请返回桌面重新连接并输入 PIN' : '画面暂不可用，正在重试…'); again(2000); return; }
+      if (x.status !== 200) {
+        // 显示服务端给出的具体原因（例如屏幕录制权限被关掉），而不是笼统的「重试」
+        var reason = '';
+        if (x.status === 409 && window.FileReader) { var fr = new FileReader(); fr.onload = function () { try { reason = JSON.parse(fr.result).error; } catch (e) { /* ignore */ } if (reason) scrMsg(reason); }; fr.readAsText(x.response); }
+        scrMsg(x.status === 401 ? '请返回桌面重新连接并输入 PIN' : '画面暂不可用，正在重试…'); again(x.status === 409 ? 4000 : 2000); return;
+      }
       var meta; try { meta = JSON.parse(decodeURIComponent(x.getResponseHeader('X-Win') || '')); } catch (e) { again(1500); return; }
       scrDisplay(x.response, meta, x.response.size || 0, function () { again(Math.max(0, 1000 / p.fps - (monotonic() - began))); });
     };

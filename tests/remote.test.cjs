@@ -213,3 +213,10 @@ test('web tiles reuse an existing tab for the same site', () => {
   assert.equal(pickTab('https://bilibili.com', tabs), null);
   assert.equal(pickTab('google.com', tabs).t, 1);
 });
+test('denied screen-recording permission is reported as a permission error, not a retry', () => {
+  const { captureError } = require('../input.js');
+  assert.equal(captureError('用户拒绝了应用程序、窗口、显示器捕捉的TCC'), 'screen-permission');
+  assert.equal(captureError('The user declined TCCs for application, window, display capture'), 'screen-permission');
+  assert.equal(captureError('no-window'), 'no-window');
+  assert.equal(captureError(undefined), 'capture');
+});
