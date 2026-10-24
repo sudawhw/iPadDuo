@@ -784,6 +784,17 @@ function mediaSources() {
   })().catch(() => { sourcesCache.pending = null; return []; });
   return sourcesCache.pending;
 }
+// macOS 会定期（或在采集程序更新后）弹出「node 正在请求直接访问屏幕和音频」确认框；
+// 在用户点「允许」之前采集时好时坏。采集失败时检查是否有这个弹窗，让 iPad 直接告诉用户该做什么（只读文字，不点击）。
+let promptCache = { at: 0, value: false };
+async function screenPromptPending() {
+  if (Date.now() - promptCache.at < 4000) return promptCache.value;
+  const out = helperReady ? await run(HELPER_BIN, ['texts', 'com.apple.UserNotificationCenter'], { timeout: 3000 }).catch(() => '') : '';
+  promptCache = { at: Date.now(), value: /录制|屏幕|record|screen/i.test(out) };
+  return promptCache.value;
+}
+const SCREEN_PROMPT_MSG = 'Mac 上弹出了屏幕录制确认窗口（“node”正在请求访问屏幕）：请在 Mac 上点「允许」，画面会自动恢复';
+
 const thumbCache = new Map(); // bundle → { at, buf }
 async function sourceThumb(bundle, w) {
   const c = thumbCache.get(bundle);
@@ -1211,7 +1222,8 @@ const server = http.createServer(async (req, res) => {
       lastClientAt = Date.now();
       const f = await input.frame(parseInt(url.searchParams.get('w') || '1280', 10), req.headers['x-deck-client']);
       if (f.error) {
-        const msg = f.error === 'screen-permission' ? '需要「屏幕录制」权限：在 Mac 上打开设置向导 http://localhost:' + PORT + '/setup.html 授权'
+        const prompt = f.error !== 'no-window' && await screenPromptPending();
+        const msg = prompt ? SCREEN_PROMPT_MSG : f.error === 'screen-permission' ? '需要「屏幕录制」权限：在 Mac 上打开设置向导 http://localhost:' + PORT + '/setup.html 授权'
           : f.error === 'no-window' ? '没有可显示的窗口' : '截图失败：' + f.error;
         return send(res, 409, { error: msg, code: f.error });
       }
@@ -1238,6 +1250,7 @@ const server = http.createServer(async (req, res) => {
       const body = await readBody(req);
       try { await files.open(body.path, !!body.reveal); return send(res, 200, { ok: true }); } catch (e) { return send(res, 400, { error: e.message }); }
     }
+    if (p === '/api/screen/prompt') return send(res, 200, { pending: await screenPromptPending(), message: SCREEN_PROMPT_MSG });
     if (p === '/api/sources') { lastClientAt = Date.now(); return send(res, 200, { sources: await mediaSources() }); }
     if (p === '/api/sources/act' && req.method === 'POST') {
       const body = await readBody(req);
