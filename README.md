@@ -222,6 +222,11 @@ iPadDuo 站在这些项目和资料的肩膀上（「参考」表示只借鉴思
 | [Mole](https://github.com/tw93/Mole) | 参考：下一版系统状态磁贴的信息设计 |
 | [RustDesk](https://github.com/rustdesk/rustdesk) | 评估过的开源远程桌面方案 |
 
+## 分析与验证
+
+- [交互重构分析与验证记录](docs/analysis-and-verification.md)：画面卡顿的根因、触控板与画面的取舍、局域网串流开源方案对比、帧时间与尺寸测试结果、尚未真机验证的部分
+- [iPhone Duo 双屏交互调研](docs/iphone-duo-research.md)
+
 ## 许可
 
 [MIT](LICENSE)。可选依赖 node-datachannel / libdatachannel 以 MPL-2.0 授权，通过 npm 单独安装，不随本仓库分发。
