@@ -18,7 +18,27 @@ function createWebRTC(opts) {
   const spawn = opts.spawn || spawnProcess;
   const log = opts.log || (() => {});
   const peers = new Map(); // socket → peer
-  let child = null, buf = Buffer.alloc(0), header = null, params = null, meta = null, restartTimer = null, stopTimer = null;
+  let child = null, buf = Buffer.alloc(0), header = null, params = null, meta = null, restartTimer = null, stopTimer = null, watchdog = null;
+  const now = opts.now || Date.now;
+
+  // 看门狗：连接已建立却一直没收到画面（静止画面下新观看者拿不到关键帧，或常驻采集进程失效）时，
+  // 2 秒先请求关键帧，4.5 秒仍没有就重启编码进程（新进程启动时一定会输出第一帧）
+  function watch() {
+    clearInterval(watchdog); watchdog = null;
+    if (!peers.size) return;
+    watchdog = setInterval(() => {
+      const t = now();
+      peers.forEach((p) => {
+        if (!p.open || p.frames || !p.openAt) return;
+        const waited = t - p.openAt;
+        if (waited > 4500 && child && !p.restarted) {
+          p.restarted = true; log('  h264 新观看者 4.5 秒没有画面，重启编码进程');
+          const c = child; child = null; c.kill(); restartTimer = setTimeout(ensureEncoder, 300);
+        } else if (waited > 2000 && t - (p.kfAt || 0) > 1500) { p.kfAt = t; writeChild('kf'); }
+      });
+    }, 500);
+    if (watchdog.unref) watchdog.unref();
+  }
 
   function available() { return !!ndc; }
 
@@ -139,7 +159,7 @@ function createWebRTC(opts) {
     };
     peers.set(socket, peer);
     track.onOpen(() => {
-      peer.open = true; peer.needKey = true;
+      peer.open = true; peer.needKey = true; peer.openAt = now();
       writeChild('kf');
       if (meta) updateMeta(meta);
     });
@@ -167,6 +187,7 @@ function createWebRTC(opts) {
     });
     pc.setLocalDescription();
     ensureEncoder();
+    watch();
   }
 
   function answer(socket, sdp) {
@@ -182,7 +203,7 @@ function createWebRTC(opts) {
     try { p.track.close(); } catch (e) { /* 已关闭 */ }
     try { p.pc.close(); } catch (e) { /* 已关闭 */ }
     if (!peers.size) {
-      clearTimeout(restartTimer);
+      clearTimeout(restartTimer); clearInterval(watchdog); watchdog = null;
       stopTimer = setTimeout(() => { if (!peers.size && child) { const c = child; child = null; c.kill(); } }, 3000);
     } else ensureEncoder();
   }
@@ -205,7 +226,10 @@ function createWebRTC(opts) {
     return { available: !!ndc, viewers: peers.size, encoder: !!child, params, frames: [...peers.values()].map((p) => p.frames) };
   }
 
-  return { available, start, answer, command, stop, close, status };
+  // 测试用：直接注册一个观看者（不走 PeerConnection）
+  function _attach(socket, peer) { peers.set(socket, peer); ensureEncoder(); watch(); }
+
+  return { available, start, answer, command, stop, close, status, _attach };
 }
 
 module.exports = { createWebRTC };

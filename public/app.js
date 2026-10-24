@@ -2214,8 +2214,8 @@
     if (scr.virtual) { msg.virtual = rtcVirtualSize(); msg.w = Math.max(msg.w, Math.min(2560, parseInt(msg.virtual, 10) * Math.min(window.devicePixelRatio || 1, 2))); }
     tpSend(msg);
     var session = scr.rtc;
-    // 6 秒内没出画面就放弃 WebRTC，用 JPEG
-    scr.watch = setTimeout(function () { if (scr.rtc === session && !session.shown) rtcFail('rtc-timeout'); }, 6000);
+    // 9 秒内没出画面就放弃 WebRTC，用 JPEG（服务端看门狗会在 4.5 秒时重启编码进程，给它留出恢复时间）
+    scr.watch = setTimeout(function () { if (scr.rtc === session && !session.shown) rtcFail('rtc-timeout'); }, 9000);
   }
   function rtcTeardown() {
     var r = scr.rtc; scr.rtc = null;
@@ -2234,6 +2234,8 @@
     if (err === 'virtual-display-unavailable') { toast('这台 Mac 无法创建扩展屏，已切回窗口画面', true); scr.virtual = false; store('deck-virtual', ''); setClass($('tpExtend'), 'on', false); if (scr.on) rtcStart(); return; }
     scr.rtcFailed = true; // 本次打开改用 JPEG；重新进入画面模式时再试
     if (scr.on) { scrMsg('改用兼容画面…'); scrSubscribeJpeg(); }
+    // 没出画面往往是 Mac 上弹出了屏幕录制确认窗口：查一下，直接告诉用户该做什么
+    api('GET', '/api/screen/prompt').then(function (r) { if (r && r.pending && scr.on && !scr.lastDisplayAt) { scrMsg(r.message); toast(r.message, true); } }, function () {});
   }
   function rtcOffer(sdp) {
     var session = scr.rtc;
