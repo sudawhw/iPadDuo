@@ -8,8 +8,17 @@
 
   var TYPES = [
     { k: 'app', n: '应用' }, { k: 'url', n: '网页' }, { k: 'folder', n: '文件夹' }, { k: 'file', n: '文件' },
-    { k: 'shortcut', n: '快捷指令' }, { k: 'system', n: '系统控制' }, { k: 'keys', n: '快捷键' }, { k: 'script', n: '脚本' }
+    { k: 'shortcut', n: '快捷指令' }, { k: 'system', n: '系统控制' }, { k: 'keys', n: '快捷键' }, { k: 'script', n: '脚本' },
+    { k: 'widget', n: '小组件' }
   ];
+  // 小组件：k = 种类，size = 默认尺寸
+  var WIDGETS = [
+    { k: 'system', n: 'Mac 状态', size: 'l' }, { k: 'cpu', n: 'CPU', size: 's' }, { k: 'mem', n: '内存', size: 's' },
+    { k: 'disk', n: '磁盘', size: 's' }, { k: 'net', n: '网络', size: 's' }, { k: 'battery', n: '电池', size: 's' },
+    { k: 'ai', n: 'AI 用量', size: 'w' }, { k: 'clock', n: '时钟', size: 'w' }, { k: 'countdown', n: '倒计时', size: 's' }, { k: 'todo', n: '待办', size: 't' }
+  ];
+  var WIDGET_NAME = {};
+  WIDGETS.forEach(function (w) { WIDGET_NAME[w.k] = w.n; });
   var TYPE_NAME = {};
   TYPES.forEach(function (t) { TYPE_NAME[t.k] = t.n; });
 
@@ -171,6 +180,8 @@
     missioncontrol: '#7a5cff', desktop: '#2f8cff', appexpose: '#5b6cff', lock: '#ff6a55', sleep: '#5a4fcf'
   };
   var TYPE_TINT = { keys: '#d98a1c', script: '#22a892' };
+  var WIDGET_TINT = { system: '#3d7bd9', cpu: '#2fbf71', mem: '#8a63f0', disk: '#e0a030', net: '#2f9bea', battery: '#2fbf71',
+    ai: '#d9774b', clock: '#5f6b7a', countdown: '#e0567f', todo: '#d9a02f' };
 
   function hexRgb(h) {
     h = String(h).replace('#', '');
@@ -184,6 +195,7 @@
   function tintOf(t) {
     if (t.color && t.color !== 'auto') return PALETTE[t.color] || '';
     if (t.type === 'system') return SYS_TINT[t.target] || '';
+    if (t.type === 'widget') return WIDGET_TINT[t.target] || '#3b4048';
     if (TYPE_TINT[t.type]) return TYPE_TINT[t.type];
     return t._tint || '';
   }
@@ -245,7 +257,164 @@
     }
   }
 
+  // ---------- 小组件：Mac 状态 / AI 用量 / 时钟 / 倒计时 / 待办 ----------
+  // 只在当前页有对应小组件、主页可见时取数：系统状态每 2 秒（省电档 5 秒），AI 用量每 30 秒；
+  // 每次只重写小组件内部的 HTML，不重排整页。
+  var WG = { stats: null, usage: null, hist: { cpu: [], rx: [], tx: [] }, timer: null, statsAt: 0, usageAt: 0, busy: false };
+  var STAT_KINDS = /^(system|cpu|mem|disk|net|battery)$/;
+  function fmtBytes(n) { if (n == null) return '—'; return n >= 1e12 ? (n / 1e12).toFixed(2) + ' TB' : n >= 1e9 ? (n / 1e9).toFixed(1) + ' GB' : (n / 1e6).toFixed(0) + ' MB'; }
+  function fmtRate(n) { return n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB/s' : n >= 1024 ? (n / 1024).toFixed(0) + ' KB/s' : Math.round(n || 0) + ' B/s'; }
+  function fmtTok(n) { n = n || 0; return n >= 1e9 ? (n / 1e9).toFixed(2) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : String(n); }
+  function fmtLeft(ms) {
+    if (ms <= 0) return '已重置';
+    var m = Math.round(ms / 60000), d = Math.floor(m / 1440), h = Math.floor(m % 1440 / 60);
+    return d ? d + ' 天 ' + h + ' 小时' : h ? h + ' 小时 ' + (m % 60) + ' 分' : m + ' 分钟';
+  }
+  function fmtUptime(s) { var d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600); return d ? d + ' 天 ' + h + ' 小时' : h + ' 小时 ' + Math.floor(s % 3600 / 60) + ' 分'; }
+  function hm(ms) { var d = new Date(ms); return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
+  var WG_WEEK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+
+  // 圆环（SVG，iOS 10 可用）：pct 0–100
+  function ring(pct, label, sub) {
+    var p = Math.max(0, Math.min(100, pct || 0));
+    return '<div class="wg-ring"><svg viewBox="0 0 36 36"><circle class="rb" cx="18" cy="18" r="15.9155"></circle>' +
+      '<circle class="rf' + (p > 85 ? ' hot' : '') + '" cx="18" cy="18" r="15.9155" stroke-dasharray="' + p.toFixed(1) + ' 100" transform="rotate(-90 18 18)"></circle></svg>' +
+      '<b>' + Math.round(p) + '<i>%</i></b><small>' + esc(label) + (sub ? '<em>' + esc(sub) + '</em>' : '') + '</small></div>';
+  }
+  function bar(pct, cls) { return '<div class="wg-bar' + (cls ? ' ' + cls : '') + '"><u style="width:' + Math.max(0, Math.min(100, pct || 0)).toFixed(1) + '%"></u></div>'; }
+  // 折线（最近约 80 秒）
+  function spark(arr, max) {
+    if (!arr || arr.length < 2) return '';
+    var m = max || Math.max.apply(null, arr.concat([1])), n = arr.length, pts = [];
+    for (var i = 0; i < n; i++) pts.push((i / (n - 1) * 100).toFixed(1) + ',' + (30 - arr[i] / m * 28).toFixed(1));
+    return '<svg class="wg-spark" viewBox="0 0 100 30" preserveAspectRatio="none"><polyline points="' + pts.join(' ') + '"></polyline></svg>';
+  }
+  function wgHead(t, extra) { return '<div class="wg-h"><span>' + esc(t.label || WIDGET_NAME[t.target] || '') + '</span>' + (extra ? '<em>' + extra + '</em>' : '') + '</div>'; }
+
+  function widgetInner(t) {
+    var k = t.target, sz = t.size || 's', st = WG.stats, u = WG.usage;
+    var big = sz === 'l', wide = sz === 'w' || sz === 'l';
+    if (STAT_KINDS.test(k) && !st) return wgHead(t) + '<div class="wg-wait">读取中…</div>';
+    var cpu = st && st.cpu.usage != null ? st.cpu.usage : 0;
+    var memPct = st ? st.mem.used / st.mem.total * 100 : 0;
+    var diskPct = st && st.disk ? (1 - st.disk.free / st.disk.total) * 100 : 0;
+    switch (k) {
+      case 'system':
+        return wgHead(t, esc(st.host) + (st.chip ? ' · ' + esc(st.chip) : '')) +
+          '<div class="wg-rings">' + ring(cpu, 'CPU', st.cpu.cores + ' 核') + ring(memPct, '内存', fmtBytes(st.mem.used)) + (wide ? ring(diskPct, '磁盘', '剩 ' + fmtBytes(st.disk && st.disk.free)) : '') + '</div>' +
+          (big ? '<div class="wg-row"><span>↓ ' + fmtRate(st.net.rx) + '</span><span>↑ ' + fmtRate(st.net.tx) + '</span></div>' + spark(WG.hist.cpu, 100) +
+            '<div class="wg-foot">运行 ' + fmtUptime(st.uptime) + (st.top[0] ? ' · 最忙：' + esc(st.top[0].name) + ' ' + Math.round(st.top[0].cpu) + '%' : '') + '</div>' : '');
+      case 'cpu':
+        return wgHead(t, st.cpu.cores + ' 核') + '<div class="wg-big">' + Math.round(cpu) + '<i>%</i></div>' +
+          '<div class="wg-sub">负载 ' + st.cpu.load.join(' · ') + '</div>' + spark(WG.hist.cpu, 100);
+      case 'mem':
+        return wgHead(t, fmtBytes(st.mem.total)) + '<div class="wg-big">' + Math.round(memPct) + '<i>%</i></div>' + bar(memPct, memPct > 85 ? 'hot' : '') +
+          '<div class="wg-sub">已用 ' + fmtBytes(st.mem.used) + (st.mem.swap > 1e8 ? ' · 交换 ' + fmtBytes(st.mem.swap) : '') + '</div>';
+      case 'disk':
+        if (!st.disk) return wgHead(t) + '<div class="wg-wait">不可用</div>';
+        return wgHead(t, fmtBytes(st.disk.total)) + '<div class="wg-big sm">' + fmtBytes(st.disk.free) + '</div><div class="wg-sub">可用</div>' + bar(diskPct, diskPct > 90 ? 'hot' : '');
+      case 'net':
+        return wgHead(t) + '<div class="wg-net"><div><i>↓</i>' + fmtRate(st.net.rx) + '</div><div><i>↑</i>' + fmtRate(st.net.tx) + '</div></div>' +
+          spark(WG.hist.rx) + (wide ? spark(WG.hist.tx) : '');
+      case 'battery':
+        if (!st.battery) return wgHead(t) + '<div class="wg-big sm">电源</div><div class="wg-sub">这台 Mac 没有电池，一直接着电源</div>';
+        return wgHead(t, esc(st.battery.ac ? '电源适配器' : '电池供电')) + '<div class="wg-big">' + st.battery.percent + '<i>%</i></div>' + bar(st.battery.percent, st.battery.percent < 20 ? 'hot' : '') + '<div class="wg-sub">' + esc(st.battery.state) + '</div>';
+      case 'ai': return widgetAI(t, u);
+      case 'clock': {
+        var now = new Date(), h = '<div class="wg-time">' + hm(now.getTime()) + '</div><div class="wg-sub">' + (now.getMonth() + 1) + ' 月 ' + now.getDate() + ' 日 ' + WG_WEEK[now.getDay()] + '</div>';
+        if (t.tz) { try { h += '<div class="wg-tz">' + esc(t.tz.split('/').pop().replace(/_/g, ' ')) + ' ' + now.toLocaleTimeString('zh-CN', { timeZone: t.tz, hour: '2-digit', minute: '2-digit', hour12: false }) + '</div>'; } catch (e) { h += '<div class="wg-tz">时区无效</div>'; } }
+        return wgHead(t) + h;
+      }
+      case 'countdown': {
+        var at = Date.parse(String(t.date || '').replace(' ', 'T')), left = at - Date.now();
+        if (!at) return wgHead(t) + '<div class="wg-wait">长按设置日期</div>';
+        var days = Math.floor(Math.abs(left) / 86400000);
+        var main = Math.abs(left) < 86400000 ? fmtLeft(Math.abs(left)) : days + '<i> 天</i>';
+        return wgHead(t) + '<div class="wg-big' + (Math.abs(left) < 86400000 ? ' sm' : '') + '">' + main + '</div><div class="wg-sub">' + (left >= 0 ? '还有 · ' : '已过 · ') + esc(String(t.date)) + '</div>';
+      }
+      case 'todo': {
+        var items = t.items || [], done = 0;
+        var rows = items.map(function (it, i) { if (it.done) done++; return '<div class="wg-todo' + (it.done ? ' done' : '') + '" data-todo="' + i + '"><i></i><span>' + esc(it.text) + '</span></div>'; }).join('');
+        return wgHead(t, done + ' / ' + items.length) + '<div class="wg-list">' + (rows || '<div class="wg-wait">长按编辑，添加待办</div>') + '</div>';
+      }
+    }
+    return wgHead(t);
+  }
+  // AI 用量：Claude Code（今日 tokens、当前 5 小时窗口何时结束）+ Codex（5 小时 / 每周额度与重置倒计时）
+  function widgetAI(t, u) {
+    if (!u) return wgHead(t) + '<div class="wg-wait">读取中…</div>';
+    var now = Date.now(), parts = [], src = t.source || '', big = t.size === 'l' || t.size === 't';
+    if (src !== 'codex') {
+      var c = u.claude;
+      parts.push('<div class="wg-ai"><div class="wg-ai-h"><b>Claude</b><em>今日</em></div>' +
+        (c ? '<div class="wg-ai-v">' + fmtTok(c.today.tokens) + '<i> tokens</i></div>' +
+          (c.block ? '<div class="wg-sub">' + hm(c.block.end) + ' 重置 · 剩 ' + fmtLeft(c.block.end - now) + '</div>' + (big ? '<div class="wg-sub">本窗口 ' + fmtTok(c.block.tokens) + ' · ' + c.block.messages + ' 次回复</div>' : '')
+            : '<div class="wg-sub">没有进行中的 5 小时窗口</div>')
+          : '<div class="wg-sub">未找到 ~/.claude 日志</div>') + '</div>');
+    }
+    if (src !== 'claude') {
+      var x = u.codex;
+      var win = function (w, name) {
+        if (!w) return '';
+        return '<div class="wg-ai-line"><span>' + name + '</span>' + bar(w.used, w.used > 85 ? 'hot' : '') + '<em>' + Math.round(w.used) + '%</em></div>' +
+          '<div class="wg-sub">' + (w.resetsAt ? fmtLeft(w.resetsAt - now) + '后重置' + (big && w.resetsAt - now > 86400000 ? '（' + WG_WEEK[new Date(w.resetsAt).getDay()] + ' ' + hm(w.resetsAt) + '）' : '') : '') + '</div>';
+      };
+      parts.push('<div class="wg-ai"><div class="wg-ai-h"><b>Codex</b>' + (x && x.todayTokens ? '<em>今日 ' + fmtTok(x.todayTokens) + '</em>' : '') + '</div>' +
+        (x && x.primary ? win(x.primary, '5 小时') + win(x.secondary, '每周') : '<div class="wg-sub">' + (x ? '还没有额度记录' : '未找到 ~/.codex 日志') + '</div>') + '</div>');
+    }
+    return wgHead(t) + '<div class="wg-ais">' + parts.join('') + '</div>';
+  }
+
+  // 当前页上的小组件 → 需要哪些数据
+  function wgVisible() {
+    if (!config || document.hidden || (tp.visible && tp.size === 'full') || (fb && fb.open)) return [];
+    var p = config.pages[pageIndex];
+    return p ? p.tiles.filter(function (t) { return t.type === 'widget'; }) : [];
+  }
+  function wgRender(list) {
+    (list || wgVisible()).forEach(function (t) {
+      var el = document.querySelector && document.querySelector('[data-wg="' + t.id + '"]');
+      if (el) el.innerHTML = widgetInner(t);
+    });
+  }
+  function wgTick() {
+    clearTimeout(WG.timer);
+    var list = wgVisible(), lite = PERF.uiTier === 'lite';
+    var every = lite ? 5000 : 2000;
+    WG.timer = setTimeout(wgTick, list.length ? every : 4000);
+    if (!list.length || WG.busy) return;
+    var needStats = list.some(function (t) { return STAT_KINDS.test(t.target); });
+    var needUsage = list.some(function (t) { return t.target === 'ai'; }) && Date.now() - WG.usageAt > 30000;
+    var jobs = [];
+    if (needStats) jobs.push(api('GET', '/api/stats').then(function (s) {
+      WG.stats = s; WG.statsAt = Date.now();
+      var h = WG.hist, push = function (a, v) { a.push(v || 0); if (a.length > 40) a.shift(); };
+      push(h.cpu, s.cpu.usage); push(h.rx, s.net.rx); push(h.tx, s.net.tx);
+    }, function () {}));
+    if (needUsage) jobs.push(api('GET', '/api/usage').then(function (u) { WG.usage = u; WG.usageAt = Date.now(); }, function () { WG.usageAt = Date.now(); }));
+    if (!jobs.length) { wgRender(list); return; }
+    WG.busy = true;
+    Promise.all(jobs).then(function () { WG.busy = false; wgRender(); }, function () { WG.busy = false; });
+  }
+  // 点小组件：待办逐项勾选；其它在 Mac 上打开对应工具（活动监视器、存储设置、时钟、日历）
+  function wgTap(t, el, target) {
+    if (t.target === 'todo') {
+      var row = target && closest(target, '[data-todo]');
+      if (!row) return;
+      var i = parseInt(row.getAttribute('data-todo'), 10);
+      if (t.items && t.items[i]) { t.items[i].done = !t.items[i].done; wgRender([t]); }
+      return api('POST', '/api/widget/todo', { id: t.id, index: i, op: 'toggle' }).then(function (r) { t.items = r.items; wgRender([t]); }, function (e) { toast(e.message, true); });
+    }
+    if (t.target === 'ai') { WG.usageAt = 0; return wgTick(); }
+    return runTile(t.id, el);
+  }
+
   function tileHtml(t) {
+    if (t.type === 'widget') {
+      return '<div class="tile widget wk-' + esc(t.target) + ' s-' + esc(t.size || 's') + '" data-id="' + esc(t.id) + '" style="' + tileBg(t) + '">' +
+        '<div class="wg" data-wg="' + esc(t.id) + '">' + widgetInner(t) + '</div>' +
+        '<div class="tile-flash"></div><span class="badge">✎</span></div>';
+    }
     return '<div class="tile s-' + esc(t.size || 's') + '" data-id="' + esc(t.id) + '" style="' + tileBg(t) + '">' +
       artHtml(t) +
       '<div class="shade"></div>' +
@@ -362,6 +531,7 @@
     renderTabs();
     renderDots();
     positionTrack(true);
+    setTimeout(wgTick, 60);
   }
 
   function swipeMove(dx) {
@@ -2502,6 +2672,7 @@
   // ---------- 触摸处理（统一 touch 与 mouse，规避 300ms 延迟） ----------
 
   var press = null;      // 当前手势
+  var pressTarget = null; // 手指按下的具体元素（小组件里区分点到了哪一项）
   var lastTouchAt = Date.now(); // 最近一次触摸（歌词页只在闲置一段时间后才自动进入）
   var lastTouch = 0;
   var LONG_PRESS = 320;
@@ -2517,6 +2688,7 @@
     else lastTouch = Date.now();
     if (closest(e.target, '.sheet-wrap') || closest(e.target, '#tp') || closest(e.target, '#fb')) return;
 
+    pressTarget = e.target;
     var el = closest(e.target, '[data-src], .tile, .dk, .pill, .tab, #volTrack, [data-np], [data-tp], #stageTab');
     if (el && el.id === 'volTrack') return volStart(e);
     var inStage = !!closest(e.target, '#stage');
@@ -2614,6 +2786,7 @@
       if (editing) return openEditor(id);
       var tile = tileById(id);
       if (tile && isDangerous(tile)) return toast('按住约 1 秒执行「' + (tile.label || '锁屏') + '」，防止误触');
+      if (tile && tile.type === 'widget') return wgTap(tile, el, pressTarget);
       // 文件夹磁贴：在 iPad 上分栏浏览（设置里可改回直接在 Mac 上打开）
       if (tile && tile.type === 'folder' && !tile.reveal && config.settings.folderBrowser !== false) return fbOpen(tile.target, tile.label);
       return runTile(id, el);
@@ -2873,6 +3046,17 @@
       case 'keys':
         return field('target', '组合键', t.target, 'cmd+shift+4',
           '<p class="hint">用 + 连接：cmd / shift / opt / ctrl + 按键。支持 space、return、tab、esc、delete、up/down/left/right、f1–f12。<br>需在 Mac「隐私与安全性 → 辅助功能」中允许终端或 node。</p>');
+      case 'widget': {
+        var h = '<div class="form-row"><label>种类</label>' + seg('target', WIDGETS, t.target || 'system') + '</div>';
+        if (t.target === 'countdown') h += field('date', '目标日期', t.date || '', '2026-12-31 或 2026-12-31 18:00', '<p class="hint">显示还剩多少天；不到一天时显示小时和分钟。</p>');
+        if (t.target === 'todo') h += '<div class="form-row"><label>待办（每行一项，行首写 x 表示已完成）</label><textarea class="field" data-f="todoText" placeholder="买咖啡豆&#10;x 提交周报">' +
+          esc((t.items || []).map(function (it) { return (it.done ? 'x ' : '') + it.text; }).join('\n')) + '</textarea><p class="hint">在主屏上点一下某一项即可勾选 / 取消。</p></div>';
+        if (t.target === 'clock') h += field('tz', '第二时区（可选）', t.tz || '', 'America/Los_Angeles、Europe/London、Asia/Tokyo');
+        if (t.target === 'ai') h += '<div class="form-row"><label>显示</label>' + seg('source', [{ k: '', n: 'Claude Code + Codex' }, { k: 'claude', n: '仅 Claude Code' }, { k: 'codex', n: '仅 Codex' }], t.source || '') +
+          '<p class="hint">读取本机 ~/.claude 与 ~/.codex 日志里的用量数字（不读取对话内容）。Claude 按 5 小时窗口统计；Codex 显示官方记录的 5 小时与每周额度、重置时间。</p></div>';
+        if (STAT_KINDS.test(t.target)) h += '<p class="hint">点一下磁贴会在 Mac 上打开活动监视器（磁盘、电池打开对应的系统设置）。只在显示这个页面时采样，不常驻占用资源。</p>';
+        return h;
+      }
       case 'script':
         return '<div class="form-row"><label>语言</label>' + seg('lang', [{ k: 'shell', n: 'Shell (zsh)' }, { k: 'applescript', n: 'AppleScript' }], t.lang || 'shell') + '</div>' +
           '<div class="form-row"><label>脚本</label><textarea class="field" data-f="script" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="open -a Safari &amp;&amp; say 好的">' + esc(t.script || '') + '</textarea></div>';
@@ -2935,11 +3119,18 @@
       if (name === 'type') {
         if (draft.type === v) return;
         draft.type = v;
-        draft.target = v === 'system' ? 'playpause' : '';
+        draft.target = v === 'system' ? 'playpause' : v === 'widget' ? 'system' : '';
         if (v === 'system' && !draft.label) draft.label = SYSTEM_NAME.playpause;
+        if (v === 'widget') { draft.label = draft.label || WIDGET_NAME.system; draft.size = 'l'; }
         return renderEditor();
       }
       if (name === 'reveal') draft.reveal = !!v;
+      else if (name === 'target' && draft.type === 'widget') {
+        if (!draft.label || WIDGET_NAME[draft.target] === draft.label) draft.label = WIDGET_NAME[v];
+        draft.target = v;
+        for (var w = 0; w < WIDGETS.length; w++) if (WIDGETS[w].k === v) draft.size = WIDGETS[w].size;
+        return renderEditor();
+      }
       else if (name === 'target' && draft.type === 'system') {
         if (!draft.label || SYSTEM_NAME[draft.target] === draft.label) draft.label = SYSTEM_NAME[v];
         draft.target = v;
@@ -3004,6 +3195,10 @@
 
   function saveDraft() {
     var t = draft;
+    if (t.type === 'widget' && t.todoText !== undefined) {
+      t.items = String(t.todoText).split('\n').map(function (l) { l = l.trim(); var d = /^x\s+/i.test(l); return { text: l.replace(/^x\s+/i, ''), done: d }; }).filter(function (x) { return x.text; });
+      delete t.todoText;
+    }
     if (t.type !== 'script' && !String(t.target || '').trim()) return toast('请先填写' + (t.type === 'url' ? '网址' : '目标'), true);
     if (t.type === 'script' && !String(t.script || '').trim()) return toast('脚本不能为空', true);
     if (!t.label) t.label = TYPE_NAME[t.type];
@@ -3203,6 +3398,7 @@
       render();
       livePoll();
       setTimeout(srcPoll, 1200);
+      wgTick();
       if (c._pendingTints) setTimeout(refreshTints, 2500);
     }, function (e) {
       $('track').innerHTML = '<section class="page"><div class="grid"><div class="empty">无法加载配置：' + esc(e.message) + '<br>请确认 Mac 上的 iPadDuo 服务正在运行</div></div></section>';
@@ -3221,7 +3417,7 @@
     document.addEventListener('visibilitychange', function () {
       if (document.hidden) suspendRemote();
       else {
-        liveSoon(50); keepAwakeKick(); setTimeout(srcPoll, 300);
+        liveSoon(50); keepAwakeKick(); setTimeout(srcPoll, 300); setTimeout(wgTick, 100);
         if (np.visible) { npTick(true); clearInterval(np.ticker); np.ticker = setInterval(npTick, 250); }
         if (tp.visible && tp.size !== 'min') { tpConnect(); tp.lastPong = Date.now(); tpPing(); if (tp.mode === 'screen') scrStart(); if (tp.mode === 'ctrl' || tp.view === 'watch') ctlStart(); }
       }

@@ -1,6 +1,6 @@
 {
   "name": "ipadduo",
-  "version": "1.0.0",
+  "version": "1.1.0-dev",
   "description": "把 iPad 变成 Mac 的第二块屏幕与快捷控制台：副屏（WebRTC 硬件视频 / 扩展屏）、触控板、磁贴启动器、媒体与歌词、AI 面板、分栏文件浏览",
   "private": true,
   "main": "server.js",

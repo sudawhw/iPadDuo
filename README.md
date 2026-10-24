@@ -178,6 +178,8 @@ input.js               会话化输入（触控 / 键盘）、WebSocket、JPEG �
 webrtc.js              WebRTC：H.264 编码进程管理、RTP 打包、信令、关键帧请求
 files.js               文件夹分栏浏览：路径校验、目录读取（子进程隔离）、QuickLook 缩略图
 remote.js              浏览器桥接：视频遥控、标签页、书签、网页磁贴去重
+stats.js               小组件：Mac 系统状态（按需采样）
+usage.js               小组件：Claude Code / Codex 用量（只读本机日志里的数字）
 nowplaying.js          正在播放（QQ 音乐 / Apple Music / 系统级）与歌词
 panels.js              应用交互面板定义（Claude、ChatGPT）
 helper/deckctl.swift   原生小工具（首次启动自动编译）
@@ -198,9 +200,26 @@ PORT=8781 NP_DEMO=1 node server.js                    # 模拟正在播放
 - `/api/remote/status` 查看推流档位与观看者；WebRTC 状态见服务日志。
 - 改了 `helper/deckctl.swift` 后重启服务会自动重新编译（先编译到临时文件再替换，不要直接覆盖正在运行的二进制）。
 
+## 小组件（next 分支，开发中）
+
+首页新增「Mac 状态」页（老配置会自动插入，已有小组件的配置不会重复添加），也可以在任意页面「＋ 磁贴 → 小组件」添加：
+
+| 小组件 | 内容 | 推荐尺寸 |
+|---|---|---|
+| Mac 状态 | CPU / 内存 / 磁盘圆环、实时网速、CPU 曲线、运行时间、最忙的应用 | 2×2 |
+| CPU · 内存 · 磁盘 · 网络 · 电池 | 单项数值 + 曲线或进度条；台式机的电池磁贴显示「接着电源」 | 1×1 / 2×1 |
+| AI 用量 | Claude Code：今日 tokens、当前 5 小时窗口何时重置；Codex：5 小时与每周额度的已用比例与重置倒计时 | 2×1 / 2×2 |
+| 时钟 | 大号时间、日期、可选第二时区 | 2×1 |
+| 倒计时 | 距离某天还有多少天（不到一天显示小时分钟） | 1×1 |
+| 待办 | 在主屏上点一下勾选；编辑时每行一项 | 1×2 |
+
+- 只在显示这一页、主页可见时取数：系统状态每 2 秒（省电档 5 秒），AI 用量每 30 秒；切走或进入遥控后停止。
+- AI 用量只读取本机 `~/.claude/projects` 与 `~/.codex/sessions` 日志中的数字字段，不读取、不上传对话内容；Claude 的 5 小时窗口按 [ccusage](https://github.com/ryoppippi/ccusage) 的方法划分。
+- 点状态类小组件会在 Mac 上打开活动监视器（磁盘、电池打开对应的系统设置），时钟打开「时钟」，倒计时打开「日历」。
+
 ## 路线图
 
-- **下一版（`next` 分支）**：主屏幕的 Mac 系统状态磁贴（CPU / 内存 / 磁盘 / 网络 / 电池 / 运行时间）、AI 用量与额度重置倒计时、倒计时、待办等小组件，更丰富的版式与自定义。
+- 小组件：更多数据源（天气、日程、GitHub 通知）、自定义配色与版式、拖动调整尺寸。
 - 扩展屏：多分辨率与竖屏、记住窗口位置。
 - 副屏：音频转发、按网络状况动态码率。
 
@@ -219,7 +238,8 @@ iPadDuo 站在这些项目和资料的肩膀上（「参考」表示只借鉴思
 | [UU 远程接入指南](https://github.com/netease-uuyc/uuremote-integration-guide) | 参考：URL Scheme 拉起远控 |
 | [LRCLIB](https://lrclib.net)、QQ 音乐与网易云音乐的公开接口 | 歌词与封面查询 |
 | [NoSleep.js](https://github.com/richtr/NoSleep.js) | 参考：循环播放静音视频阻止 iPad 锁屏 |
-| [Mole](https://github.com/tw93/Mole) | 参考：下一版系统状态磁贴的信息设计 |
+| [Mole](https://github.com/tw93/Mole) | 参考：系统状态小组件的信息设计 |
+| [ccusage](https://github.com/ryoppippi/ccusage) | 参考：Claude Code 本地日志的用量统计与 5 小时窗口划分 |
 | [RustDesk](https://github.com/rustdesk/rustdesk) | 评估过的开源远程桌面方案 |
 
 ## 许可

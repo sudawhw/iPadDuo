@@ -138,6 +138,27 @@ const DEFAULT_SETTINGS = {
   folderBrowser: true,    // 点开文件夹磁贴：在 iPad 上分栏浏览（false = 直接在 Mac 上打开）
 };
 
+// 「Mac 状态」页：系统状态与小组件（v4 起的首页）
+function statusPage() {
+  const soon = new Date(Date.now() + 30 * 86400000);
+  const ymd = soon.getFullYear() + '-' + String(soon.getMonth() + 1).padStart(2, '0') + '-' + String(soon.getDate()).padStart(2, '0');
+  return {
+    id: uid(), name: 'Mac 状态', tiles: [
+      // 6 列 × 3 行正好排满：状态 2×2、AI 2×2、时钟 2×1、待办 1×2、倒计时、网络 2×1、内存、CPU、磁盘
+      { id: uid(), type: 'widget', target: 'system', label: 'Mac 状态', color: 'auto', size: 'l' },
+      { id: uid(), type: 'widget', target: 'ai', label: 'AI 用量', color: 'auto', size: 'l' },
+      { id: uid(), type: 'widget', target: 'clock', label: '时钟', color: 'auto', size: 'w' },
+      { id: uid(), type: 'widget', target: 'todo', label: '待办', color: 'auto', size: 't',
+        items: [{ text: '点一下完成这一项', done: false }, { text: '长按磁贴编辑待办', done: false }] },
+      { id: uid(), type: 'widget', target: 'countdown', label: '倒计时', date: ymd, color: 'auto', size: 's' },
+      { id: uid(), type: 'widget', target: 'net', label: '网络', color: 'auto', size: 'w' },
+      { id: uid(), type: 'widget', target: 'mem', label: '内存', color: 'auto', size: 's' },
+      { id: uid(), type: 'widget', target: 'cpu', label: 'CPU', color: 'auto', size: 's' },
+      { id: uid(), type: 'widget', target: 'disk', label: '磁盘', color: 'auto', size: 's' },
+    ],
+  };
+}
+
 function defaultConfig() {
   const has = (n) => !!resolveAppPath(n);
   const pick = (cands) => cands.find(has);
@@ -162,9 +183,10 @@ function defaultConfig() {
   addApp(['System Settings', 'System Preferences'], '系统设置', 'auto');
 
   return {
-    version: 3,
+    version: 4,
     settings: Object.assign({}, DEFAULT_SETTINGS),
     pages: [
+      statusPage(),
       { id: uid(), name: '常用应用', tiles: appTiles },
       {
         id: uid(), name: '网页', tiles: [
@@ -222,6 +244,12 @@ function loadConfig() {
     config.version = 3;
     saveConfig(config);
   }
+  // v4：首页加入「Mac 状态」（系统状态 + 小组件）；已经有小组件的配置不再添加
+  if ((config.version || 1) < 4) {
+    if (!config.pages.some((p) => p.tiles.some((t) => t.type === 'widget'))) config.pages.unshift(statusPage());
+    config.version = 4;
+    saveConfig(config);
+  }
   return config;
 }
 
@@ -241,6 +269,13 @@ function validateConfig(c) {
     p.tiles.forEach((t) => {
       if (!t.id) t.id = uid();
       Object.keys(t).forEach((k) => { if (k.charAt(0) === '_') delete t[k]; });
+      if (t.type === 'widget') {
+        if (!/^(system|cpu|mem|disk|net|battery|ai|clock|countdown|todo)$/.test(String(t.target))) t.target = 'system';
+        if (t.items !== undefined) t.items = (Array.isArray(t.items) ? t.items : []).slice(0, 50)
+          .map((x) => ({ text: String((x && x.text) || '').slice(0, 200), done: !!(x && x.done) })).filter((x) => x.text);
+        if (t.date !== undefined) t.date = String(t.date).slice(0, 40);
+        if (t.tz !== undefined) t.tz = String(t.tz).slice(0, 60);
+      }
     });
   });
   return c;
@@ -474,6 +509,13 @@ async function runTile(t) {
     }
     case 'keys':
       return sendKeys(target);
+    case 'widget': {
+      // 点状态磁贴：打开 Mac 上对应的系统工具
+      const open = { system: ['-a', 'Activity Monitor'], cpu: ['-a', 'Activity Monitor'], mem: ['-a', 'Activity Monitor'], net: ['-a', 'Activity Monitor'],
+        disk: ['x-apple.systempreferences:com.apple.settings.Storage'], battery: ['x-apple.systempreferences:com.apple.Battery-Settings.extension'],
+        clock: ['-a', 'Clock'], countdown: ['-a', 'Calendar'] }[target];
+      return open ? run('/usr/bin/open', open) : null;
+    }
     case 'script':
       if (t.lang === 'applescript') return osa(t.script || '');
       return run('/bin/zsh', ['-lc', t.script || ''], { timeout: 60000, cwd: HOME });
@@ -746,6 +788,10 @@ async function popupLabels(bundle) {
 const { createRemote } = require('./remote');
 const remote = createRemote({ run });
 const { createFiles } = require('./files');
+const { createStats } = require('./stats');
+const { createUsage } = require('./usage');
+const stats = createStats({ run });
+const usage = createUsage({ home: HOME });
 const files = createFiles({
   home: HOME, run, cacheDir: path.join(ROOT, 'cache'),
   // 已添加为磁贴的文件夹也允许浏览（可能在家目录之外，如外接硬盘）
@@ -1222,6 +1268,22 @@ const server = http.createServer(async (req, res) => {
       });
       return res.end(buf);
     }
+    // 小组件数据：系统状态（按需采样）与 AI 用量（本机日志，只读数字）
+    if (p === '/api/stats') { lastClientAt = Date.now(); return send(res, 200, await stats.get()); }
+    if (p === '/api/usage') return send(res, 200, await usage.get());
+    if (p === '/api/widget/todo' && req.method === 'POST') {
+      const body = await readBody(req);
+      const t = findTile(String(body.id || ''));
+      if (!t || t.type !== 'widget' || t.target !== 'todo') return send(res, 404, { error: '待办磁贴不存在' });
+      const items = Array.isArray(t.items) ? t.items : (t.items = []);
+      const i = parseInt(body.index, 10);
+      if (body.op === 'toggle' && items[i]) items[i].done = !items[i].done;
+      else if (body.op === 'clear') t.items = items.filter((x) => !x.done);
+      else return send(res, 400, { error: '未知操作' });
+      saveConfig(config);
+      return send(res, 200, { ok: true, items: t.items });
+    }
+
     // 文件夹分栏浏览
     if (p === '/api/fs/list') {
       try { return send(res, 200, await files.list(url.searchParams.get('path'))); } catch (e) { return send(res, 400, { error: e.message }); }
