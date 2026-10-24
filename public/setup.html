@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>iPadDuo 设置向导</title>
+<link rel="icon" href="touch-icon.png">
+<style>
+  :root { --bg: #0a0b0d; --card: #15181d; --line: rgba(255,255,255,.08); --text: #f3f5f7; --muted: #8a929c; --ok: #3ddc84; --bad: #ff6b6b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: radial-gradient(900px 500px at 50% -10%, rgba(120,140,170,.15), transparent 70%), var(--bg); color: var(--text);
+    font: 15px/1.6 -apple-system, "PingFang SC", sans-serif; -webkit-font-smoothing: antialiased; }
+  main { max-width: 760px; margin: 0 auto; padding: 48px 20px 80px; }
+  h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: .3px; }
+  .lead { color: var(--muted); margin: 0 0 32px; }
+  .card { background: var(--card); border-radius: 20px; padding: 24px 26px; margin-bottom: 18px; box-shadow: inset 0 0 0 1px var(--line); }
+  .card h2 { font-size: 17px; margin: 0 0 14px; display: flex; align-items: center; gap: 10px; }
+  .num { width: 26px; height: 26px; border-radius: 13px; background: rgba(255,255,255,.1); display: inline-flex; align-items: center; justify-content: center; font-size: 13px; }
+  .row { display: flex; gap: 26px; align-items: center; flex-wrap: wrap; }
+  .qr { width: 196px; height: 196px; border-radius: 14px; background: #fff; padding: 10px; flex: none; }
+  .qr img { width: 100%; height: 100%; image-rendering: pixelated; display: block; }
+  .url { font: 600 22px/1.3 Menlo, monospace; word-break: break-all; }
+  .muted { color: var(--muted); font-size: 13px; }
+  ol { margin: 10px 0 0; padding-left: 20px; color: #cfd5dc; }
+  .check { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+  .check:first-of-type { border-top: 0; }
+  .dot { width: 10px; height: 10px; border-radius: 5px; background: #555; flex: none; }
+  .dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); }
+  .check .t { flex: 1; } .check .t small { display: block; color: var(--muted); font-size: 12px; }
+  button { font: inherit; font-size: 14px; border: 0; border-radius: 10px; padding: 8px 14px; background: rgba(255,255,255,.1); color: var(--text); cursor: pointer; }
+  button.primary { background: var(--ok); color: #062012; font-weight: 600; }
+  code { background: rgba(255,255,255,.08); padding: 1px 6px; border-radius: 6px; font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>iPadDuo 设置向导</h1>
+  <p class="lead">把旧 iPad 变成这台 Mac 的快捷控制台。两步就好。</p>
+
+  <section class="card">
+    <h2><span class="num">1</span>在 iPad 上打开</h2>
+    <div class="row">
+      <div class="qr"><img id="qr" alt="二维码"></div>
+      <div>
+        <div class="url" id="url">…</div>
+        <div class="muted" id="alt"></div>
+        <ol>
+          <li>用 iPad 相机扫左边的二维码，或在 Safari 里输入上面的地址</li>
+          <li>点 Safari 的「分享」→「添加到主屏幕」</li>
+          <li>以后从主屏幕图标打开，全屏运行。建议插电，并把 iPad「自动锁定」设为永不</li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2><span class="num">2</span>检查权限</h2>
+    <div class="check"><i class="dot" id="dHelper"></i><div class="t">辅助工具已编译<small>首次启动时自动用 Xcode 命令行工具编译 <code>helper/deckctl</code></small></div></div>
+    <div class="check"><i class="dot" id="dAx"></i><div class="t">辅助功能权限<small>播放控制、快捷键、触控板、读取 QQ 音乐的正在播放都需要它。打开开关后点「重启服务」。</small></div>
+      <button class="primary" id="btnAx">去授权</button><button id="btnRestart">重启服务</button></div>
+    <div class="check"><i class="dot" id="dScreen"></i><div class="t">屏幕录制权限（可选）<small>只有触控板里的「画面」模式（把 Mac 窗口投到 iPad 上直接点）需要。打开开关后点「重启服务」。</small></div>
+      <button class="primary" id="btnScreen">去授权</button></div>
+    <div class="check"><i class="dot ok"></i><div class="t">Node.js <span id="node"></span><small>需要 18 或更高版本</small></div></div>
+  </section>
+
+  <section class="card">
+    <h2><span class="num">3</span>之后</h2>
+    <p class="muted" style="margin:0">在 iPad 上点右上角「编辑」可以添加 / 排序磁贴；「编辑 → 设置」里可以设访问 PIN、屏幕常亮、歌词等。<br>
+      第一次截图、切换深色模式时，macOS 会再弹一次权限提示，允许即可。</p>
+  </section>
+</main>
+<script>
+  function $(id) { return document.getElementById(id); }
+  function dot(el, ok) { el.className = 'dot ' + (ok === true ? 'ok' : ok === false ? 'bad' : ''); }
+  let qrFor = '';
+  async function refresh() {
+    try {
+      const s = await fetch('/api/setup').then((r) => r.json());
+      const main = s.urls[0] || s.bonjour;
+      $('url').textContent = main;
+      $('alt').textContent = '也可以用：' + [s.bonjour].concat(s.urls.slice(1)).join('、');
+      if (qrFor !== main) { qrFor = main; $('qr').src = '/api/qr?text=' + encodeURIComponent(main); }
+      $('node').textContent = s.node;
+      dot($('dHelper'), s.helper);
+      dot($('dAx'), s.accessibility);
+      $('btnAx').style.display = s.accessibility ? 'none' : '';
+      dot($('dScreen'), s.screen);
+      $('btnScreen').style.display = s.screen ? 'none' : '';
+    } catch (e) { /* 服务重启中 */ }
+  }
+  async function action(name) {
+    await fetch('/api/setup/action', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Deck': '1' }, body: JSON.stringify({ action: name }) }).catch(() => {});
+  }
+  $('btnAx').onclick = () => action('accessibility');
+  $('btnScreen').onclick = () => action('screen');
+  $('btnRestart').onclick = () => { action('restart'); setTimeout(refresh, 2500); };
+  refresh();
+  setInterval(refresh, 3000);
+</script>
+</body>
+</html>

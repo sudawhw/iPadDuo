@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="iPadDuo">
+<meta name="format-detection" content="telephone=no">
+<meta name="theme-color" content="#0a0b0d">
+<link rel="apple-touch-icon" href="touch-icon.png">
+<title>iPadDuo</title>
+<link rel="stylesheet" href="app.css?v=13">
+</head>
+<body>
+<div id="app">
+  <header class="bar">
+    <div class="clock"><b id="clockTime">--:--</b><small id="clockDate"></small></div>
+    <nav class="tabs" id="tabs"></nav>
+    <div class="bar-right">
+      <span class="host" id="hostName">连接中…</span>
+      <span class="conn" id="conn"></span>
+      <button class="pill" id="editBtn" type="button">编辑</button>
+    </div>
+  </header>
+
+  <div class="edit-bar" id="editBar">
+    <span class="edit-hint">点按磁贴修改 · 长按拖动排序</span>
+    <button class="pill primary" data-act="add-front" type="button">＋ Mac 当前应用 / 网页</button>
+    <button class="pill" data-act="add-tile" type="button">＋ 磁贴</button>
+    <button class="pill" data-act="add-page" type="button">＋ 页面</button>
+    <button class="pill" data-act="rename-page" type="button">重命名页面</button>
+    <button class="pill" data-act="move-page" type="button">页面左移</button>
+    <button class="pill danger" data-act="del-page" type="button">删除页面</button>
+    <button class="pill" data-act="settings" type="button">设置</button>
+  </div>
+
+  <main class="stage" id="stage">
+    <div class="track" id="track"></div>
+  </main>
+  <div class="dots" id="dots"></div>
+
+  <footer class="dock" id="dock">
+    <div class="mini" id="mini" data-np="open">
+      <div class="mini-art" id="miniArt"><i class="eq"><b></b><b></b><b></b></i></div>
+      <div class="mini-txt"><b id="miniTitle">未在播放</b><small id="miniSub">打开音乐类磁贴开始</small></div>
+    </div>
+    <button class="dk dk-src" id="srcBtn" data-src="open" type="button"><i class="src-stack"><b></b><b></b></i><span id="srcCount"></span></button>
+    <div class="dock-group media">
+      <button class="dk" data-sys="prev" type="button"><i class="ic ic-prev"></i></button>
+      <button class="dk dk-main" data-sys="playpause" type="button"><i class="ic ic-play" id="dockPlayIc"></i></button>
+      <button class="dk" data-sys="next" type="button"><i class="ic ic-next"></i></button>
+    </div>
+    <div class="dock-group volume">
+      <button class="dk" data-sys="mute" type="button" id="muteBtn"><i class="ic ic-vol"></i></button>
+      <div class="vol-track" id="volTrack"><div class="vol-fill" id="volFill"></div><span class="vol-num" id="volNum">--</span></div>
+    </div>
+    <button class="dk dk-remote" data-tp="open" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span>遥控 Mac</span></button>
+  </footer>
+</div>
+
+<!-- 播放来源：音乐 + 各浏览器里的视频，带实时缩略图 -->
+<div class="src-sheet" id="srcSheet">
+  <div class="src-head"><b>正在播放</b><button class="pill" type="button" data-src="close">完成</button></div>
+  <div class="src-list" id="srcList"></div>
+</div>
+
+<!-- 编辑面板 -->
+<div class="sheet-wrap" id="sheet">
+  <div class="sheet">
+    <div class="sheet-head">
+      <button class="pill" type="button" data-act="sheet-cancel">取消</button>
+      <b id="sheetTitle">编辑磁贴</b>
+      <button class="pill primary" type="button" data-act="sheet-save">保存</button>
+    </div>
+    <div class="sheet-body" id="sheetBody"></div>
+  </div>
+</div>
+
+<!-- 选择器（应用 / 快捷指令） -->
+<div class="sheet-wrap" id="picker">
+  <div class="sheet">
+    <div class="sheet-head">
+      <button class="pill" type="button" data-act="picker-close">返回</button>
+      <b id="pickerTitle">选择</b>
+      <span style="width:64px"></span>
+    </div>
+    <div class="sheet-body">
+      <input class="field" id="pickerSearch" type="search" placeholder="搜索" autocomplete="off" autocorrect="off" autocapitalize="off">
+      <div class="pick-list" id="pickerList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 歌词页 -->
+<div class="np" id="np">
+  <div class="np-bg" id="npBg"></div>
+  <div class="np-shade"></div>
+  <div class="np-top">
+    <button class="back-btn" data-np="close" type="button">‹ 桌面</button>
+    <span class="np-clock" id="npClock"></span>
+    <button class="pill np-close" data-np="layout" id="npLayoutBtn" type="button">大字</button>
+  </div>
+  <div class="np-body">
+    <div class="np-side">
+      <div class="np-art" id="npArt"><i class="np-art-ph"></i></div>
+      <div class="np-info">
+      <div class="np-meta"><b id="npTitle"></b><small id="npArtist"></small></div>
+      <div class="np-progress">
+        <div class="np-bar"><i id="npFill"></i></div>
+        <div class="np-times"><span id="npCur">0:00</span><span id="npDur">0:00</span></div>
+      </div>
+      <div class="np-ctrl">
+        <button class="dk" data-sys="prev" type="button"><i class="ic ic-prev"></i></button>
+        <button class="dk dk-main" data-sys="playpause" type="button"><i class="ic ic-play" id="npPlayIc"></i></button>
+        <button class="dk" data-sys="next" type="button"><i class="ic ic-next"></i></button>
+      </div>
+      </div>
+    </div>
+    <div class="np-lyrics" id="npLyrics"><div class="np-lines" id="npLines"></div></div>
+  </div>
+</div>
+
+<!-- 触控：控制 / 触控板 / 画面 -->
+<!-- 文件夹分栏浏览：点文件夹往右展开，点文件出预览 -->
+<div class="fb" id="fb">
+  <div class="fb-bar">
+    <button class="back-btn" data-fb="close" type="button">‹ 桌面</button>
+    <div class="fb-path" id="fbPath"></div>
+    <button class="pill" data-fb="finder" type="button">在 Mac 上打开</button>
+  </div>
+  <div class="fb-cols" id="fbCols"></div>
+</div>
+
+<div class="tp" id="tp">
+  <div class="tp-top">
+    <button class="back-btn" data-tp="close" type="button">‹ 桌面</button>
+    <button class="back-btn tp-size" data-tp="size" id="tpSize" type="button">⤡ 分屏</button>
+    <div class="tp-mode" id="tpMode"><button type="button" data-tp="mode-ctrl">控制</button><button type="button" data-tp="mode-screen">副屏</button></div>
+    <button class="pill tp-release" data-tp="release" type="button">松开拖拽</button>
+    <span class="tp-rtt" id="tpRtt"></span>
+    <span class="tp-app"><i class="tp-dot"></i><span id="tpApp">控制</span></span>
+  </div>
+  <div class="tp-ctrl" id="tpCtrl"></div>
+  <div class="tp-pad" id="tpPad">
+    <div class="tp-layer" id="tpLayer"><img class="tp-screen" id="tpScreen" alt=""><video class="tp-screen tp-video" id="tpVideo" playsinline webkit-playsinline muted autoplay></video></div>
+    <div class="tp-screen-msg" id="tpScreenMsg"></div>
+    <i class="tp-ripple" id="tpRipple"></i>
+    <span class="tp-hint tp-hint-pad">单指移动 · 轻点单击 · 双指滑动滚动 · 双指轻点右键 · 轻点后按住拖动</span>
+    <span class="tp-hint tp-hint-screen">轻点 = 点击 · 拖动 = 滚动 · 双指捏合 = 放大 · 长按后拖动 = 拖拽 · 双指轻点 = 右键</span>
+    <span class="tp-fps" id="tpFps"></span>
+    <button class="tp-zoom" data-tp="zoom-reset" type="button">还原大小</button>
+    <div class="tp-tools">
+      <button class="tp-tool" data-tp="pointer" id="tpPointer" type="button"><b>☝︎</b><span>触控板</span></button>
+      <button class="tp-tool tp-rtc-only" data-tp="extend" id="tpExtend" type="button"><b>⧉</b><span>扩展屏</span></button>
+      <button class="tp-tool tp-virtual-only" data-tp="bring" type="button"><b>⇥</b><span>移来窗口</span></button>
+      <button class="tp-tool tp-virtual-only" data-tp="home" type="button"><b>⇤</b><span>送回</span></button>
+    </div>
+  </div>
+  <div class="tp-overlay" id="tpOverlay"></div>
+  <div class="tp-rail" id="tpRail"></div>
+  <div class="tp-echo" id="tpEcho"></div>
+  <div class="tp-keys">
+    <button type="button" data-key="esc">esc</button>
+    <button type="button" data-key="tab">tab</button>
+    <button type="button" data-key="left">←</button>
+    <button type="button" data-key="up">↑</button>
+    <button type="button" data-key="down">↓</button>
+    <button type="button" data-key="right">→</button>
+    <button type="button" data-key="backspace">⌫</button>
+    <button type="button" data-key="return">⏎</button>
+    <button type="button" class="tp-kbd" data-tp="kbd">⌨ 键盘</button>
+  </div>
+  <input class="tp-input" id="tpInput" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+</div>
+
+<button class="stage-tab" id="stageTab" type="button">‹ 控件</button>
+
+<div class="offline" id="offline">Mac 未连接，正在重试…</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="app.js?v=13"></script>
+</body>
+</html>

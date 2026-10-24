@@ -1,0 +1,39 @@
+{
+  "name": "ipadduo",
+  "version": "1.0.0",
+  "description": "把 iPad 变成 Mac 的第二块屏幕与快捷控制台：副屏（WebRTC 硬件视频 / 扩展屏）、触控板、磁贴启动器、媒体与歌词、AI 面板、分栏文件浏览",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "install-service": "./scripts/install-autostart.sh",
+    "uninstall-service": "./scripts/uninstall-autostart.sh",
+    "test": "node --test tests/*.test.cjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "os": [
+    "darwin"
+  ],
+  "keywords": [
+    "ipad",
+    "second-screen",
+    "sidecar",
+    "webrtc",
+    "stream-deck",
+    "macos",
+    "remote",
+    "trackpad",
+    "lyrics"
+  ],
+  "optionalDependencies": {
+    "node-datachannel": "^0.33.4"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sudawhw/iPadDuo.git"
+  },
+  "homepage": "https://github.com/sudawhw/iPadDuo"
+}
