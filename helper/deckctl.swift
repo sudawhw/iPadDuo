@@ -444,6 +444,23 @@ func windowGeometry(_ id: CGWindowID) -> CGRect? {
     return CGRect(x: x, y: y, width: width, height: height)
 }
 
+// 点击位置上方是否盖着别的应用的窗口（系统授权弹窗、通知、浮动工具条……）。
+// 副屏只截目标窗口，iPad 上看不到这些遮挡；直接点会点到别的窗口上，所以先检查并拒绝。
+// 窗口列表从前往后排列；忽略程序坞 / 菜单栏这类全屏透明层（层级 ≥ 20）和负层级、全透明窗口。
+func coveringWindow(at p: CGPoint, owner: pid_t) -> String? {
+    let list = (CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]) ?? []
+    for w in list {
+        guard let pid = w[kCGWindowOwnerPID as String] as? pid_t,
+              let bd = w[kCGWindowBounds as String] as? [String: Any],
+              let r = CGRect(dictionaryRepresentation: bd as CFDictionary), r.contains(p) else { continue }
+        if pid == owner { return nil }
+        let layer = w[kCGWindowLayer as String] as? Int ?? 0, alpha = w[kCGWindowAlpha as String] as? Double ?? 1
+        if layer < 0 || layer >= 20 || alpha < 0.05 { continue }
+        return (w[kCGWindowOwnerName as String] as? String ?? "?").replacingOccurrences(of: "\t", with: " ")
+    }
+    return nil
+}
+
 func windowOwnerPID(_ id: CGWindowID) -> pid_t? {
     guard let list = CGWindowListCopyWindowInfo([.optionIncludingWindow], id) as? [[String: Any]],
           let w = list.first(where: { ($0[kCGWindowNumber as String] as? CGWindowID) == id }) else { return nil }
@@ -1122,6 +1139,15 @@ func serve() {
         e.post(tap: .cghidEventTap)
     }
     func btn(_ s: String) -> CGMouseButton { s == "right" ? .right : .left }
+    // 一次完整的点击：先让指针停稳，再按下、保持片刻后松开。
+    // 三个事件在同一微秒内发出时，WebKit 等应用偶尔会把按下和松开当成噪声丢掉（实测约 1/4 的点击无效）。
+    func clickSeq(_ p: CGPoint?, _ b: CGMouseButton, _ n: Int64) {
+        let at = p ?? cursor()
+        if p != nil { post(.mouseMoved, at, b); usleep(12_000) }
+        post(b == .right ? .rightMouseDown : .leftMouseDown, at, b, clicks: n)
+        usleep(35_000)
+        post(b == .right ? .rightMouseUp : .leftMouseUp, at, b, clicks: n)
+    }
     defer {
         for (b, down) in buttonDown where down { post(b == .right ? .rightMouseUp : .leftMouseUp, cursor(), b) }
         for k in keysDown { _ = postKeyState(k, down: false) }
@@ -1144,11 +1170,7 @@ func serve() {
         case "click":
             let sub = rest.split(separator: " ").map(String.init)
             let b = btn(sub.first ?? "left"), n = Int64(sub.count > 1 ? Int(sub[1]) ?? 1 : 1)
-            let p = cursor()
-            for i in 1...max(1, n) {
-                post(b == .right ? .rightMouseDown : .leftMouseDown, p, b, clicks: i)
-                post(b == .right ? .rightMouseUp : .leftMouseUp, p, b, clicks: i)
-            }
+            for i in 1...max(1, n) { clickSeq(nil, b, i); if i < n { usleep(40_000) } }
         case "down", "up":
             let sub = rest.split(separator: " ").map(String.init)
             let b = btn(sub.first ?? "left")
@@ -1180,10 +1202,12 @@ func serve() {
                 continue
             }
             let p = CGPoint(x: bounds.minX + nx * bounds.width, y: bounds.minY + ny * bounds.height)
+            if (cmd == "clickwin" || cmd == "downwin"), id != 0, let owner = windowOwnerPID(id), let other = coveringWindow(at: p, owner: owner) {
+                print("inputerr\t" + a[11] + "\tcovered:" + other); continue
+            }
             let b = btn(a[7]), n: Int64 = a[8] == "2" ? 2 : 1
             if cmd == "clickwin" {
-                post(.mouseMoved, p, b); post(b == .right ? .rightMouseDown : .leftMouseDown, p, b, clicks: n)
-                post(b == .right ? .rightMouseUp : .leftMouseUp, p, b, clicks: n)
+                clickSeq(p, b, n)
             } else if cmd == "downwin" {
                 buttonDown[b] = true; clickCounts[b] = 1; post(.mouseMoved, p, b)
                 post(b == .right ? .rightMouseDown : .leftMouseDown, p, b)
@@ -1205,10 +1229,7 @@ func serve() {
             let sub = rest.split(separator: " ").map(String.init)
             guard sub.count >= 3, let x = Double(sub[0]), let y = Double(sub[1]) else { continue }
             let b = btn(sub[2]), n = Int64(sub.count > 3 ? Int(sub[3]) ?? 1 : 1)
-            let p = CGPoint(x: x, y: y)
-            post(.mouseMoved, p, b)
-            post(b == .right ? .rightMouseDown : .leftMouseDown, p, b, clicks: n)
-            post(b == .right ? .rightMouseUp : .leftMouseUp, p, b, clicks: n)
+            clickSeq(CGPoint(x: x, y: y), b, n)
         case "downat", "upat":
             let sub = rest.split(separator: " ").map(String.init)
             guard sub.count >= 3, let x = Double(sub[0]), let y = Double(sub[1]) else { continue }
