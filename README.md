@@ -113,6 +113,8 @@ node server.js                   # 前台运行，Ctrl+C 退出（默认端口 8
 | 长按约半秒后拖动 | 拖拽（进度条、选中文字） | 轻点后立刻按住并移动 = 拖拽 |
 | 双指 | 捏合放大（最多 4 倍）/ 滑动滚动 / 轻点右键 | 滑动滚动 / 轻点右键 |
 
+深链接：`http://<Mac>:8780/#screen` 直接进入副屏，`#control` 进入控制，`#screen-compat` 本次使用 JPEG 兼容画面。可以把它们分别「添加到主屏幕」，当作独立入口。
+
 底部按键条：esc、tab、方向键、退格、回车、⌨ 键盘（支持中文输入法，上方回显）。右上角显示实际帧率、分辨率、码率和传输方式（硬件视频 / 推流 / 兼容连接）。
 
 **分屏**：「⤡ 分屏」让控件占半屏、磁贴占另一半；控件按实际宽度重排（窄时两列大按钮、封面上移）。
@@ -241,6 +243,11 @@ iPadDuo 站在这些项目和资料的肩膀上（「参考」表示只借鉴思
 | [Mole](https://github.com/tw93/Mole) | 参考：系统状态小组件的信息设计 |
 | [ccusage](https://github.com/ryoppippi/ccusage) | 参考：Claude Code 本地日志的用量统计与 5 小时窗口划分 |
 | [RustDesk](https://github.com/rustdesk/rustdesk) | 评估过的开源远程桌面方案 |
+
+## 分析与验证
+
+- [交互重构分析与验证记录](docs/analysis-and-verification.md)：画面卡顿的根因、触控板与画面的取舍、局域网串流开源方案对比、帧时间与尺寸测试结果、尚未真机验证的部分
+- [iPhone Duo 双屏交互调研](docs/iphone-duo-research.md)
 
 ## 许可
 
