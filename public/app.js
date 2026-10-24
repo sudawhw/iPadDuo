@@ -3201,6 +3201,11 @@
       config = c;
       config.settings = config.settings || {};
       render();
+      // 深链接：#screen / #screen-compat / #control 直接进入副屏 / 控制（可添加到主屏幕当作「副屏」入口）
+      var hash = (location.hash || '').replace('#', '');
+      // #screen-compat：本次使用 JPEG 兼容画面（排查网络或对比老设备效果）
+      if (hash === 'screen-compat') { RTC_OK = false; setClass($('tp'), 'can-rtc', false); }
+      if (/^(screen|screen-compat|control)$/.test(hash)) setTimeout(function () { tpOpen(hash === 'control' ? 'ctrl' : 'screen', 'full'); }, 300);
       livePoll();
       setTimeout(srcPoll, 1200);
       if (c._pendingTints) setTimeout(refreshTints, 2500);
