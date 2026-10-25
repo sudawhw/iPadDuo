@@ -442,4 +442,21 @@ function createNowPlaying(opts) {
   return { sync, state, lyrics, artPath, nudge };
 }
 
-module.exports = { createNowPlaying, parseLrc, norm, score, fromQQ, fromNetease, fromLrclib };
+// QQ 音乐主窗口里的「待播列表」：辅助功能文字里，「待播列表」「N首」之后是一串「播放 歌名」按钮
+function parseQQQueue(texts) {
+  const lines = String(texts || '').split('\n');
+  const at = lines.findIndex((l) => l === 'StaticText\t待播列表');
+  if (at < 0) return null;
+  let total = 0, i = at + 1;
+  const m = (lines[i] || '').match(/^StaticText\t(\d+)首$/);
+  if (m) { total = Number(m[1]); i++; }
+  const songs = [];
+  for (; i < lines.length && songs.length < 100; i++) {
+    const b = lines[i].match(/^Button\t播放 (.+)$/);
+    if (!b) break;
+    songs.push(b[1]);
+  }
+  return { total: total || songs.length, songs };
+}
+
+module.exports = { createNowPlaying, parseLrc, norm, score, fromQQ, fromNetease, fromLrclib, parseQQQueue };

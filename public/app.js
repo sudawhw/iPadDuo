@@ -682,6 +682,7 @@
       if (!volDragging) showVolume(s.volume, s.muted);
       npUpdate(s.np || { active: false }, s.media);
       srcMini();
+      if (tp.visible && ctl.kind === 'music') musicApply(); // 歌名、封面、待播高亮跟随正在播放实时更新
       liveTimer = setTimeout(livePoll, (s.np && s.np.playing) || np.visible ? 1500 : 2500);
     }, function () {
       setConn(false);
@@ -1724,8 +1725,13 @@
         '<div class="cm-side"><div class="cm-meta"><b id="cmTitle">' + esc(ctl.name) + '</b><small id="cmArtist"></small></div>' +
           '<div class="cm-main">' + cbtn('data-sys="prev"', '<i class="ic ic-prev"></i>') + cbtn('data-sys="playpause"', '<i class="ic ic-play" id="cmPlayIc"></i>', 'cbig') + cbtn('data-sys="next"', '<i class="ic ic-next"></i>') + '</div>' +
           '<div class="cv-row">' + cbtn('data-music="like"', '<span id="cmLike">♡</span> 喜欢', 'cm-like') + cbtn('data-sys="voldown"', '音量 −') + cbtn('data-sys="volup"', '音量 +') + cbtn('data-np="open"', '歌词') + '</div>' +
-          '<div class="cv-row cm-modes" id="cmModes"></div>' +
-        '</div></div>';
+          '<div class="cm-modes" id="cmModes"></div>' +
+        '</div>' +
+        // 待播列表：宽屏时在右侧单独一栏；窄屏 / 分屏时点「待播 N 首」从侧面滑出
+        '<div class="cm-queue" id="cmQueue"><div class="cm-q-h"><b>待播列表</b><small id="cmQCount"></small>' +
+          '<button type="button" class="pill cm-q-close" data-music-queue="close">完成</button></div>' +
+          '<div class="cm-q-list" id="cmQList"><div class="cm-q-empty">读取中…</div></div></div>' +
+        '</div>';
     } else if (k === 'slides') {
       h += '<div class="cs cs-slides">' +
         '<div class="sl-main">' + cbtn('data-ckey="left"', '◀<small>上一页</small>', 'sl-btn') + cbtn('data-ckey="right"', '▶<small>下一页</small>', 'sl-btn') + '</div>' +
@@ -1880,6 +1886,21 @@
     }
   }
 
+  // 待播列表：只在内容变化时重绘，保留滚动位置；正在播放的那首高亮
+  function musicQueue(q) {
+    var box = $('cmQList'); if (!box) return;
+    if (!q || !q.songs.length) { box.innerHTML = '<div class="cm-q-empty">' + (q ? '待播列表是空的' : '在 Mac 上打开 QQ 音乐主窗口后显示待播列表') + '</div>'; $('cmQCount').textContent = ''; return; }
+    var cur = np.state && np.state.active ? np.state.title : '';
+    var key = q.songs.join('\n') + '|' + cur;
+    // QQ 只把当前可见的几行放进辅助功能树：显示「共 N 首，已加载 M 首」，不假装是完整列表
+    $('cmQCount').textContent = q.total > q.songs.length ? '共 ' + q.total + ' 首 · 已加载 ' + q.songs.length + ' 首' : q.total + ' 首';
+    if (box.getAttribute('data-key') === key) return;
+    box.setAttribute('data-key', key);
+    box.innerHTML = q.songs.map(function (t, i) {
+      return '<button type="button" class="cm-q-item' + (t === cur ? ' now' : '') + '" data-music-play="' + esc(t) + '"><i>' + (t === cur ? '♪' : i + 1) + '</i><span>' + esc(t) + '</span></button>';
+    }).join('');
+  }
+
   // —— 音乐（与底栏 / 歌词页共用正在播放的状态） ——
   function musicApply(m) {
     if (ctl.kind !== 'music' || !$('cmTitle')) return;
@@ -1887,9 +1908,12 @@
       $('cmLike').textContent = m.liked ? '♥' : '♡';
       setClass($('tpCtrl').querySelector('.cm-like'), 'liked', !!m.liked);
       setClass($('tpCtrl').querySelector('.cm-like'), 'hide', m.liked === null);
+      // 播放模式：一排小按钮（不再占满整行大按钮）；「待播 N 首」在窄屏时打开列表
       var mh = '';
-      (m.modes || []).forEach(function (x) { mh += cbtn('data-music-mode="' + esc(x) + '"', esc(x)); });
+      (m.modes || []).forEach(function (x) { mh += '<button type="button" class="cm-chip" data-music-mode="' + esc(x) + '">' + esc(x) + '</button>'; });
+      if (m.queue && m.queue.songs.length) mh += '<button type="button" class="cm-chip cm-q-open" data-music-queue="open">待播 ' + m.queue.total + ' 首</button>';
       if ($('cmModes').innerHTML !== mh && !$('cmModes').querySelector('.is-busy')) $('cmModes').innerHTML = mh;
+      musicQueue(m.queue);
     }
     var s = np.state;
     if (s && s.active) {
@@ -1925,6 +1949,14 @@
     if (tabI || tabX || mark) {
       return busy(b, function () { return api('POST', '/api/browser/do', { bundle: ctl.bundle, action: tabI ? 'switch' : tabX ? 'close' : 'open', index: tabI || tabX, url: mark }); })
         .then(function (r) { if (!r) return; renderTabs2({ tabs: r.tabs, bookmarks: [] }); ctl.tabsAt = 0; loadTabs(); }, function () {});
+    }
+    var mq = b.getAttribute('data-music-queue');
+    if (mq) return setClass($('cmQueue'), 'open', mq === 'open');
+    var play = b.getAttribute('data-music-play');
+    if (play) {
+      return busy(b, function () { return api('POST', '/api/music', { bundle: ctl.bundle, action: 'play', value: play }); }).then(function (m) {
+        musicApply(m); liveSoon(500); if (!$('tp').className.match(/\bcw-l\b/)) setClass($('cmQueue'), 'open', false);
+      }, function (e) { toast(e.message, true); });
     }
     var mus = b.getAttribute('data-music'), mode = b.getAttribute('data-music-mode');
     if (mus || mode) {
@@ -3409,7 +3441,10 @@
       var hash = (location.hash || '').replace('#', '');
       // #screen-compat：本次使用 JPEG 兼容画面（排查网络或对比老设备效果）
       if (hash === 'screen-compat') { RTC_OK = false; setClass($('tp'), 'can-rtc', false); }
-      if (/^(screen|screen-compat|control)$/.test(hash)) setTimeout(function () { tpOpen(hash === 'control' ? 'ctrl' : 'screen', 'full'); }, 300);
+      // #control:<Bundle ID> / #control-split:<Bundle ID>：固定显示某个应用的控件（不把它切到 Mac 前台）
+      var dl = hash.match(/^control(-split)?(?::([\w.-]+))?$/);
+      if (dl) setTimeout(function () { ctl.pin = dl[2] || ''; tpOpen('ctrl', dl[1] ? 'split' : 'full'); }, 300);
+      else if (/^(screen|screen-compat)$/.test(hash)) setTimeout(function () { tpOpen('screen', 'full'); }, 300);
       livePoll();
       setTimeout(srcPoll, 1200);
       wgTick();

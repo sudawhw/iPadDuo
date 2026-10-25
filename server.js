@@ -895,7 +895,13 @@ async function musicInfo(bundle) {
   let liked = null;
   if (m.like.some((p) => /取消喜欢|Unlike/.test(p) && has(p))) liked = true;
   else if (m.like.some((p) => !/取消喜欢|Unlike/.test(p) && has(p))) liked = false;
-  return { liked, modes: Object.keys(m.modes).filter((k) => m.modes[k].some(has)) };
+  const info = { liked, modes: Object.keys(m.modes).filter((k) => m.modes[k].some(has)) };
+  // 待播列表（只读辅助功能文字；QQ 音乐的主窗口需要开着）
+  if (bundle === 'com.tencent.QQMusicMac') {
+    const texts = await run(HELPER_BIN, ['texts', bundle], { timeout: 4000 }).catch(() => '');
+    info.queue = require('./nowplaying').parseQQQueue(texts);
+  }
+  return info;
 }
 
 async function musicAction(bundle, action, value) {
@@ -906,6 +912,14 @@ async function musicAction(bundle, action, value) {
   }
   const m = MUSIC_MENUS[bundle];
   if (!m) throw new Error('这个应用不支持');
+  if (action === 'play') {
+    // 点 QQ 音乐待播列表里那一首的「播放 歌名」按钮（按完整名字精确匹配）
+    const title = String(value || '').slice(0, 200);
+    if (bundle !== 'com.tencent.QQMusicMac' || !title) throw new Error('不支持的操作');
+    const re = '^播放 ' + title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$';
+    await run(HELPER_BIN, ['axpress', bundle, re]).catch(() => { throw new Error('没有找到这首歌，待播列表可能已经变了'); });
+    return;
+  }
   const paths = action === 'like' ? m.like : (m.modes[value] || []);
   if (!paths.length) throw new Error('不支持的操作');
   await run(HELPER_BIN, ['menupath', bundle].concat(paths)).catch(() => { throw new Error('没有找到对应的菜单项'); });
@@ -1382,6 +1396,8 @@ const server = http.createServer(async (req, res) => {
       const bundle = url.searchParams.get('bundle') || '';
       if (p === '/api/debug/menus') return send(res, 200, await run(HELPER_BIN, ['menus', bundle]).catch((e) => e.message));
       if (p === '/api/debug/texts') return send(res, 200, await run(HELPER_BIN, ['texts', bundle]).catch((e) => e.message));
+      // 只查找、不按下：确认某个按钮能被正则唯一找到（例如 QQ 音乐待播列表里的「播放 歌名」）
+      if (p === '/api/debug/findbutton') return send(res, 200, await run(HELPER_BIN, ['axbutton', bundle, url.searchParams.get('re') || '']).catch(() => 'not found'));
       if (p === '/api/debug/composer') {
         const op = url.searchParams.get('op') === 'clear' ? ['set', ''] : ['get'];
         return send(res, 200, await run(HELPER_BIN, ['composer', bundle].concat(op)).catch((e) => 'ERR ' + e.message));

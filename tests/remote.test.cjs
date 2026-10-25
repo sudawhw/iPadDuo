@@ -220,3 +220,10 @@ test('denied screen-recording permission is reported as a permission error, not 
   assert.equal(captureError('no-window'), 'no-window');
   assert.equal(captureError(undefined), 'capture');
 });
+test('QQ Music up-next list is read from accessibility texts and stops at the first non-song button', () => {
+  const { parseQQQueue } = require('../nowplaying.js');
+  const q = parseQQQueue(['StaticText\t04:34', 'Button\t下一首', 'StaticText\t待播列表', 'StaticText\t50首',
+    'Button\t播放 两只恋人', 'Button\t播放 High Fidelity (Album Version)', 'Button\t开启新对话', 'Button\t播放 《别的歌》'].join('\n'));
+  assert.deepEqual(q, { total: 50, songs: ['两只恋人', 'High Fidelity (Album Version)'] });
+  assert.equal(parseQQQueue('StaticText\t别的页面'), null);
+});
