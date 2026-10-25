@@ -2371,6 +2371,9 @@
   function rtcOffer(sdp) {
     var session = scr.rtc;
     if (!session || session.pc || !scr.on) return;
+    // 超时从收到 offer 起再算 6 秒：Mac 负载高时 offer 本身可能要好几秒，不能刚连上就放弃
+    clearTimeout(scr.watch);
+    scr.watch = setTimeout(function () { if (scr.rtc === session && !session.shown) rtcFail('rtc-timeout'); }, 6000);
     var pc;
     try { pc = new RTCPeerConnection({ iceServers: [] }); } catch (e) { rtcFail('rtc-create'); return; }
     session.pc = pc;
