@@ -728,6 +728,11 @@ const input = createInput({ helperBin: HELPER_BIN, isHelperReady: () => helperRe
 
 // WebRTC + H.264 画面（iPadOS 11+）；没装 node-datachannel 时自动只用 JPEG 推流
 const { createWebRTC } = require('./webrtc');
+// 自愈：连续采集两轮冷却仍未恢复时，由 launchd 托管则退出重启（launchd 的 KeepAlive 会立即拉起）
+require('./input').onStreamStuck(() => {
+  console.log('  连续采集多次失败未恢复：' + (process.env.XPC_SERVICE_NAME ? '重启服务以恢复系统采集' : '请手动重启服务'));
+  if (process.env.XPC_SERVICE_NAME) setTimeout(() => process.exit(75), 500);
+});
 const rtc = createWebRTC({ helperBin: HELPER_BIN, isHelperReady: () => helperReady, log: (m) => console.log(m), registerMeta: input.registerMeta });
 input.setRTC(rtc);
 
@@ -1345,6 +1350,7 @@ const server = http.createServer(async (req, res) => {
       const body = await readBody(req);
       try { await files.open(body.path, !!body.reveal); return send(res, 200, { ok: true }); } catch (e) { return send(res, 400, { error: e.message }); }
     }
+    if (p === '/api/clientlog' && req.method === 'POST') { const b = await readBody(req); console.log('  [iPad ' + (req.socket.remoteAddress || '').replace(/^::ffff:/, '') + '] ' + String(b.m || '').slice(0, 400)); return send(res, 200, { ok: true }); }
     if (p === '/api/screen/prompt') return send(res, 200, { pending: await screenPromptPending(), message: SCREEN_PROMPT_MSG });
     if (p === '/api/sources') { lastClientAt = Date.now(); return send(res, 200, { sources: await mediaSources() }); }
     if (p === '/api/sources/act' && req.method === 'POST') {

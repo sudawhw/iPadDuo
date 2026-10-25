@@ -11,14 +11,20 @@ const CLIENT_RE = /^[a-z0-9-]{8,80}$/i;
 // 屏幕录制权限被拒（包括 macOS 定期复核时被关掉）时 ScreenCaptureKit 只返回一句本地化的 TCC 错误：统一归为 screen-permission
 // 系统的连续采集（ScreenCaptureKit 流）坏掉时（内存吃紧、replayd 异常），反复启动采集流会拖慢单张截图，
 // 让兼容画面一卡一卡。1 分钟内中断两次就判定「暂不可用」2 分钟：期间推流请求立即回绝，只用截图。
-const streamHealth = { fails: [], brokenUntil: 0 };
+// 连续两轮冷却都没恢复：多半是 macOS 的采集服务已拒绝本进程的新采集（实测重启 node 即恢复）。
+// 由 launchd 托管时主动退出，让 launchd 立即重新拉起；手动 node server.js 运行时只记录日志。
+const streamHealth = { fails: [], brokenUntil: 0, trips: 0 };
 function noteStreamFailure(now) {
   const t = now || Date.now();
   streamHealth.fails = streamHealth.fails.filter((x) => t - x < 60000).concat(t);
-  if (streamHealth.fails.length >= 2) { streamHealth.brokenUntil = t + 120000; streamHealth.fails = []; }
+  if (streamHealth.fails.length >= 2) {
+    streamHealth.brokenUntil = t + 120000; streamHealth.fails = []; streamHealth.trips++;
+    if (streamHealth.trips >= 2 && streamHealth.onStuck) streamHealth.onStuck();
+  }
 }
 function streamBroken(now) { return (now || Date.now()) < streamHealth.brokenUntil; }
-function streamRecovered() { streamHealth.fails = []; streamHealth.brokenUntil = 0; }
+function streamRecovered() { streamHealth.fails = []; streamHealth.brokenUntil = 0; streamHealth.trips = 0; }
+function onStreamStuck(fn) { streamHealth.onStuck = fn; }
 
 function captureError(err) {
   const e = String(err || 'capture');
@@ -206,7 +212,7 @@ function createInput(opts) {
         capWaiter = (line) => {
           clearTimeout(t); let meta;
           try { meta = JSON.parse(line); } catch (e) { return resolve({ error: 'parse' }); }
-          if (!meta.ok) return resolve({ error: captureError(meta.err) });
+          if (!meta.ok) { const e = captureError(meta.err); if (e === 'screen-permission' && meta.err !== 'screen-permission') noteStreamFailure(); return resolve({ error: e }); }
           fs.readFile(file, (error, jpg) => {
             if (error) return resolve({ error: 'read' });
             meta.frameId = epoch + '-' + (++sequence);
@@ -235,7 +241,7 @@ function createInput(opts) {
       capWaiter = (line) => {
         clearTimeout(t); let meta;
         try { meta = JSON.parse(line); } catch (e) { return resolve({ error: 'parse' }); }
-        if (!meta.ok) return resolve({ error: captureError(meta.err) });
+        if (!meta.ok) { const e = captureError(meta.err); if (e === 'screen-permission' && meta.err !== 'screen-permission') noteStreamFailure(); return resolve({ error: e }); }
         fs.readFile(file, (error, jpg) => resolve(error ? { error: 'read' } : { jpg, meta }));
       };
       write(c, 'thumb ' + w + ' ' + bundle + ' ' + file);
@@ -264,7 +270,7 @@ function createInput(opts) {
     if (g.child) { if (JSON.stringify(p) !== JSON.stringify(g.params)) { g.params = p; g.latest = null; write(g.child, 'profile ' + p.w + ' ' + p.fps + ' ' + p.q); } return; }
     if (!isHelperReady()) return broadcast(g, { t: 'screenerr', err: 'helper' });
     let c; try { c = spawn(helperBin, ['stream', String(p.w), String(p.fps), String(p.q), 'credit'], { stdio: ['pipe', 'pipe', 'pipe'] }); } catch (e) { broadcast(g, { t: 'screenerr', err: 'stream-start' }); return; }
-    g.child = c; g.params = p; g.buf = Buffer.alloc(0); g.header = null; g.latest = null; g.credited = false; g.lastHealth = Date.now();
+    g.child = c; g.spawnAt = Date.now(); g.params = p; g.buf = Buffer.alloc(0); g.header = null; g.latest = null; g.credited = false; g.lastHealth = Date.now();
     let finished = false;
     const finish = (reason, permission) => {
       if (finished) return; finished = true;
@@ -297,7 +303,9 @@ function createInput(opts) {
         if (h.kind === 'health') { broadcast(g, { t: 'screenhealth', at: Date.now() }); continue; }
         if (!h.ok) {
           const e = captureError(h.err);
-          if (e !== 'screen-permission' && e !== 'no-window') noteStreamFailure();
+          // 刚启动的 1–3 秒里偶尔会报「中断」随后正常出帧：只统计运行 3 秒以后的中断
+          // 「screen-permission」字样来自系统的 TCC 文本时（预检已通过）也是采集服务异常，同样计入；真正没授权会在启动预检时退出
+          if (e !== 'no-window' && h.err !== 'screen-permission' && Date.now() - (g.spawnAt || 0) > 3000) noteStreamFailure();
           broadcast(g, { t: 'screenerr', err: e }); continue;
         }
         if (!Number.isSafeInteger(h.bytes) || h.bytes < 1 || h.bytes > 12 * 1024 * 1024) { if (g.child) g.child.kill(); return; }
@@ -419,4 +427,4 @@ function createInput(opts) {
   return { upgrade, handle, front, frame, thumb, typeText, close, clientId, registerMeta, setRTC: (r) => { rtc = r; }, key: (k) => KEY_RE.test(k) && cmd('key ' + k),
     status: () => ({ sessions: sessions.size, streams: [...streams.values()].map((g) => ({ profile: g.key, viewers: g.subs.size, ...g.params, healthy: !!g.child && Date.now() - g.lastHealth < 10000 })) }) };
 }
-module.exports = { createInput, captureError, noteStreamFailure, streamBroken, streamRecovered };
+module.exports = { createInput, captureError, noteStreamFailure, streamBroken, streamRecovered, onStreamStuck };

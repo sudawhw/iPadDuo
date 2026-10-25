@@ -30,10 +30,14 @@ test('a viewer that never receives a frame gets a keyframe request, then the enc
 test('repeated capture-stream failures tell viewers to switch to compatibility mode right away', () => {
   let c;
   const spawn = () => { c = new EventEmitter(); c.stdin = Object.assign(new EventEmitter(), { destroyed: false, write() {} }); c.stdout = new EventEmitter(); c.stderr = new EventEmitter(); c.kill = () => {}; return c; };
-  const rtc = createWebRTC({ helperBin: 'x', isHelperReady: () => true, registerMeta: () => 'f1', spawn });
+  let t = 1000;
+  const rtc = createWebRTC({ helperBin: 'x', isHelperReady: () => true, registerMeta: () => 'f1', spawn, now: () => t });
   const sent = [];
   rtc._attach({}, { open: true, openAt: Date.now(), frames: 0, w: 1280, fps: 30, kbps: 3000, virtual: '', send: (o) => sent.push(o) });
   const err = JSON.stringify({ ok: 0, err: '流播放期间，应用程序连接中断而导致失败' }) + '\n';
+  c.stdout.emit('data', Buffer.from(err)); c.stdout.emit('data', Buffer.from(err));
+  assert.equal(sent.filter((o) => o.t === 'rtc-error').length, 0, 'interruptions in the first 3 s after start are start-up jitter');
+  t = 5000;
   c.stdout.emit('data', Buffer.from(err));
   assert.equal(sent.filter((o) => o.t === 'rtc-error').length, 0, 'one interruption is retried silently');
   c.stdout.emit('data', Buffer.from(err));
@@ -73,4 +77,16 @@ test('encoder spawn errors restart safely and stale exits cannot clear the repla
   first.emit('exit', null, 'SIGTERM');
   assert.equal(rtc.status().encoder, true, 'stale exit did not clear the active encoder');
   rtc.close();
+});
+
+test('two cool-downs in a row without recovery trigger the self-heal hook', () => {
+  const input = require('../input.js');
+  let stuck = 0; input.onStreamStuck(() => stuck++);
+  input.streamRecovered();
+  const t = 5_000_000;
+  input.noteStreamFailure(t); input.noteStreamFailure(t + 1000);
+  assert.equal(stuck, 0, 'first cool-down only');
+  input.noteStreamFailure(t + 200_000); input.noteStreamFailure(t + 201_000);
+  assert.equal(stuck, 1, 'second cool-down without any success restarts the service');
+  input.streamRecovered(); input.onStreamStuck(null);
 });

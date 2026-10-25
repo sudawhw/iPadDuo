@@ -928,6 +928,10 @@ final class VirtualDisplay {
 final class H264Streamer: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
     var maxWidth: CGFloat, fps: Int
     let encoder: H264Encoder
+    // 补帧：采集流超过 1 秒没有新帧（静止画面，或内存吃紧时系统的连续采集停摆）时，用单张截图编码一帧。
+    // 新观看者因此总能拿到关键帧；采集流停摆时画面也能以约 2 fps 继续。
+    var curFilter: SCContentFilter?, curCfg: SCStreamConfiguration?
+    var lastFrameAt: CFTimeInterval = 0, shooting = false
     let virtualSize: (Int, Int)?
     var vdisplay: VirtualDisplay?
     var stream: SCStream?
@@ -1035,6 +1039,7 @@ final class H264Streamer: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked
             let rebuild = newID != currentID || stream == nil
             if rebuild, let old = stream { stream = nil; try? await old.stopCapture() }
             queue.sync { self.meta = info; self.lastPixel = nil }
+            curFilter = filter; curCfg = cfg
             if let s = stream { try await s.updateConfiguration(cfg) }
             else {
                 let s = SCStream(filter: filter, configuration: cfg, delegate: self)
@@ -1053,8 +1058,18 @@ final class H264Streamer: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked
               let atts = CMSampleBufferGetSampleAttachmentsArray(sb, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
               let raw = atts.first?[.status] as? Int, SCFrameStatus(rawValue: raw) == .complete,
               let px = CMSampleBufferGetImageBuffer(sb) else { return }
-        lastPixel = px
+        lastPixel = px; lastFrameAt = CACurrentMediaTime()
         encoder.encode(px, CMTime(seconds: CACurrentMediaTime() - t0, preferredTimescale: 90000))
+    }
+    @MainActor func fillGap() async {
+        guard !paused, !shooting, let f = curFilter, let c = curCfg, CACurrentMediaTime() - lastFrameAt > 1.0 else { return }
+        shooting = true; defer { shooting = false }
+        guard let sb = try? await SCScreenshotManager.captureSampleBuffer(contentFilter: f, configuration: c),
+              let px = CMSampleBufferGetImageBuffer(sb) else { return }
+        queue.async {
+            self.lastPixel = px; self.lastFrameAt = CACurrentMediaTime()
+            self.encoder.encode(px, CMTime(seconds: CACurrentMediaTime() - self.t0, preferredTimescale: 90000))
+        }
     }
     func stream(_ stream: SCStream, didStopWithError error: Error) {
         Task { @MainActor in if self.stream === stream { self.stream = nil; self.currentID = 0 } }
@@ -1087,6 +1102,7 @@ func h264Loop(_ args: [String]) {
         exit(0)
     }
     Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { _ in Task { await s.retarget() } }
+    Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in Task { await s.fillGap() } }
     Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in s.queue.async { s.write(["ok": 1, "kind": "health"]) } }
     Task { await s.retarget() }
     RunLoop.main.run()
