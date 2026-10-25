@@ -205,6 +205,12 @@
       html += '<button type="button" class="tab' + (i === pageIndex ? ' on' : '') + '" data-page="' + i + '">' + esc(p.name) + '</button>';
     });
     $('tabs').innerHTML = html;
+    // 窄屏（分屏的半边）时页签放不下：把当前页签滚到可见位置，不被右侧按钮遮住
+    var bar = $('tabs'), on = bar.children[pageIndex];
+    if (on && bar.scrollWidth > bar.clientWidth + 1) {
+      var target = on.offsetLeft - (bar.clientWidth - on.offsetWidth) / 2;
+      bar.scrollLeft = Math.max(0, Math.min(bar.scrollWidth - bar.clientWidth, target));
+    }
   }
 
   function renderDots() {
@@ -1482,6 +1488,8 @@
     var epoch = ctl.epoch;
     ctl.busyEpoch = epoch;
     var target = tp.mode === 'screen' ? ((scr.meta && scr.meta.bundle) || '') : ctl.pin;
+    // 首次读取较慢（某些应用的菜单 / 辅助功能树很大）时先给出提示，不留空白
+    if (!ctl.kind && tp.mode === 'ctrl') setTimeout(function () { if (epoch === ctl.epoch && !ctl.kind && !$('tpCtrl').children.length) $('tpCtrl').innerHTML = '<div class="ctl-loading">正在读取控件…</div>'; }, 600);
     api('GET', '/api/control' + (target ? '?bundle=' + encodeURIComponent(target) : '')).then(function (r) {
       if (epoch === ctl.epoch && ctlActive()) ctlApply(r);
     }).catch(function (e) {

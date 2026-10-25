@@ -1610,3 +1610,14 @@ body.theme-light .form-row .hint[style*="cfd5dc"] { color: var(--muted) !importa
   .fb-bar .pill { max-width: 132px; padding: 0 10px; white-space: normal; line-height: 1.25; }
   .settings-section { margin-top: 20px; padding-top: 15px; }
 }
+
+.ctl-loading { margin: auto; font-size: 16px; color: var(--muted); }
+
+/* 窄主页（分屏半边）：「设置」只留齿轮图标，给页签留出空间；页签两端渐隐，提示还能左右滑 */
+body.app-narrow #settingsBtn { width: 44px; padding: 0; font-size: 0; }
+body.app-narrow #settingsBtn:before { content: '⚙'; font-size: 20px; line-height: 44px; }
+body.app-narrow .tabs { -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%); mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%); }
+body.app-narrow .clock { min-width: 0; margin-right: 6px; }
+
+/* 分段按钮至少 44pt 宽（苹果的最小触控尺寸） */
+.seg button { min-width: 44px; }
