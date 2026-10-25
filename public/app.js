@@ -1147,10 +1147,10 @@
     if (ta) ta.blur();
     var el = $('tp');
     setClass(el, 'shown', false);
-    setClass(document.body, 'stage-split', false);
-    setClass(document.body, 'stage-min', false);
+    // 主页区域在面板淡出后再恢复全宽（和分屏进入一样，避免动画中整页重排）
+    clearTimeout(tp.splitTimer);
     tp.size = 'full';
-    setTimeout(function () { if (!tp.visible) { setClass(el, 'open', false); setClass(el, 'split', false); } layout(); }, 300);
+    setTimeout(function () { if (!tp.visible) { setClass(el, 'open', false); setClass(el, 'split', false); setClass(document.body, 'stage-split', false); setClass(document.body, 'stage-min', false); } layout(); }, 300);
   }
 
   // 两种模式：ctrl（控制面板）/ screen（副屏：Mac 画面 + 直接触控）。
@@ -1219,7 +1219,11 @@
     var wasMin = tp.size === 'min';
     tp.size = size;
     var b = document.body;
-    setClass(b, 'stage-split', size === 'split');
+    // 进入分屏：先让控件面板滑入（只用 transform，合成层完成），动画结束后再把主页区域收窄、重排一次；
+    // 收窄和滑入同时进行会让整个磁贴网格在动画中重排，实测掉帧（p95 约 80ms）
+    clearTimeout(tp.splitTimer);
+    if (size === 'split' && !/\bstage-split\b/.test(b.className)) tp.splitTimer = setTimeout(function () { if (tp.size === 'split') { setClass(b, 'stage-split', true); layout(); ctlFit(); } }, 360);
+    else setClass(b, 'stage-split', size === 'split');
     setClass(b, 'stage-min', size === 'min');
     setClass($('tp'), 'split', size === 'split');
     $('tpSize').innerHTML = size === 'split' ? '⤢ 全屏' : '⤡ 分屏';
@@ -1230,7 +1234,7 @@
       if (tp.mode === 'screen') scrStart(); if (tp.mode === 'ctrl' || tp.view === 'watch') ctlStart();
     }
     ctlFit();
-    setTimeout(function () { layout(); ctlFit(); if (scr.on) { scrZoom(1, 0, 0); if (scr.streaming) scr.reprofile = true; } }, 240); // 磁贴区宽度变了，重新排版
+    setTimeout(function () { layout(); ctlFit(); if (scr.on) { scrZoom(1, 0, 0); if (scr.streaming) scr.reprofile = true; } }, 400); // 磁贴区宽度变了，重新排版
   }
 
   // ---------- 网页视图：观看（视频）/ 阅读（信息流）/ 浏览（普通网页） ----------
@@ -2073,6 +2077,33 @@
     });
   }
   function scrMsg(text) { $('tpScreenMsg').textContent = text || ''; setClass($('tpScreenMsg'), 'on', !!text); if (text) dbg('msg ' + text); }
+  function perfCheck() {
+    var steps = [
+      ['翻到下一页', function () { goPage(Math.min(pageIndex + 1, config.pages.length - 1)); }],
+      ['翻回上一页', function () { goPage(Math.max(pageIndex - 1, 0)); }],
+      ['打开遥控（全屏）', function () { tpOpen('ctrl', 'full'); }],
+      ['切到分屏', function () { tpSetSize('split'); }],
+      ['关闭遥控', function () { tpClose(); }]
+    ];
+    var i = 0;
+    var next = function () {
+      if (i >= steps.length) { dbg('perfcheck done tier=' + PERF.uiTier + ' screen=' + window.innerWidth + 'x' + window.innerHeight); return; }
+      var step = steps[i++], d = [], last = 0, t0 = 0;
+      var tick = function (now) {
+        if (last) d.push(now - last); else t0 = now;
+        last = now;
+        if (now - t0 < 800) nextFrame(tick);
+        else {
+          d.sort(function (a, b) { return a - b; });
+          var over = d.filter(function (x) { return x > 33.4; }).length;
+          dbg('perf ' + step[0] + ': ' + d.length + ' 帧, p50 ' + (d[Math.floor(d.length * 0.5)] || 0).toFixed(1) + 'ms, p95 ' + (d[Math.floor(d.length * 0.95)] || 0).toFixed(1) + 'ms, >33ms ' + over);
+          setTimeout(next, 500);
+        }
+      };
+      step[1](); nextFrame(tick);
+    };
+    next();
+  }
   // 诊断：地址带 ?debug=1 时，把副屏的关键步骤发到 Mac 的服务日志（排查 iPad 上看不到的问题）
   var DEBUG = /[?&]debug=1/.test(location.search), dbgT0 = Date.now();
   function dbg(m) {
@@ -3362,6 +3393,8 @@
       // #control:<Bundle ID> / #control-split:<Bundle ID>：固定显示某个应用的控件（不把它切到 Mac 前台）
       var dl = hash.match(/^control(-split)?(?::([\w.-]+))?$/);
       if (dl) setTimeout(function () { ctl.pin = dl[2] || ''; tpOpen('ctrl', dl[1] ? 'split' : 'full'); }, 300);
+      // #perfcheck（配合 ?debug=1）：自动翻页、打开 / 关闭遥控面板，记录真实帧间隔并发到 Mac 日志
+      if (hash === 'perfcheck') setTimeout(perfCheck, 1500);
       else if (/^(screen|screen-compat)$/.test(hash)) setTimeout(function () { tpOpen('screen', 'full'); }, 300);
       livePoll();
       setTimeout(srcPoll, 1200);
