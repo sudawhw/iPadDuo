@@ -968,9 +968,11 @@ const server = http.createServer(async (req, res) => {
   const p = url.pathname;
 
   if (!p.startsWith('/api/')) {
-    const rel = p === '/' ? 'index.html' : decodeURIComponent(p).replace(/^\/+/, '');
-    const file = path.normalize(path.join(PUBLIC, rel));
-    if (!file.startsWith(PUBLIC)) return send(res, 403, 'Forbidden');
+    let rel;
+    try { rel = p === '/' ? 'index.html' : decodeURIComponent(p).replace(/^\/+/, ''); } catch (e) { return send(res, 400, 'Bad path'); }
+    if (rel.includes('\0')) return send(res, 400, 'Bad path');
+    const file = path.resolve(PUBLIC, rel);
+    if (file !== PUBLIC && !file.startsWith(PUBLIC + path.sep)) return send(res, 403, 'Forbidden');
     return serveFile(res, file, null, null, req);
   }
 
@@ -990,8 +992,8 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/config' && req.method === 'GET') return send(res, 200, configWithTints());
     if (p === '/api/config' && req.method === 'POST') {
       const c = validateConfig(await readBody(req));
-      config = c;
       saveConfig(c);
+      config = c;
       nowPlaying.sync();
       return send(res, 200, { ok: true });
     }
@@ -1402,6 +1404,8 @@ server.on('upgrade', (req, socket, head) => {
 
 // 正常退出时结束捕获并释放该服务按住的输入；LaunchAgent 会按原有配置重启。
 function shutdown() {
+  nowPlaying.close();
+  rtc.close();
   input.close();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 1000).unref();

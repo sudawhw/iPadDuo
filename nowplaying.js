@@ -14,7 +14,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { spawn } = require('child_process');
+const { spawn: spawnProcess } = require('child_process');
 
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15';
 
@@ -203,6 +203,7 @@ return "none"`;
 
 function createNowPlaying(opts) {
   const { root, cacheDir, run, helperBin, isHelperReady, getSettings, log } = opts;
+  const spawn = opts.spawn || spawnProcess;
   const isActive = opts.isActive || (() => true);
   const lyricDir = path.join(cacheDir, 'lyrics');
   const artDir = path.join(cacheDir, 'art');
@@ -213,6 +214,8 @@ function createNowPlaying(opts) {
   let info = null;         // 歌词与封面结果
   let source = null;
   let pollTimer = null;
+  let pollBusy = false;
+  let generation = 0;
   let child = null;
   let childRestart = null;
 
@@ -277,20 +280,24 @@ function createNowPlaying(opts) {
     return out ? parseQQ(out) : null;
   }
 
-  // 自动：QQ 音乐优先（正在播放的那个优先），其次 Apple Music。没有 iPad 在看时不轮询。
-  async function pollAuto() {
+  // 自动：QQ 音乐优先（正在播放的那个优先），其次 Apple Music。没有设备在看时不轮询。
+  async function pollAuto(g) {
     if (!isActive()) return;
     const qq = await readQQ();
+    if (g !== generation) return;
     if (qq && qq.rate > 0) return setTrack(qq);
     const before = track;
-    await pollMusic();
+    await pollMusic(g);
+    if (g !== generation) return;
     if ((!track || !track.rate) && qq) setTrack(qq); // 都没在播：显示 QQ 音乐暂停中的歌
     else if (!track && before && before.app) track = null;
   }
 
-  // Apple Music：每 2 秒查询一次（未运行时只做一次很轻的 is running 检查）
-  async function pollMusic() {
+  // Apple Music：未运行时只做一次很轻的 is running 检查。
+  async function pollMusic(g) {
+    if (!isActive()) return;
     const out = await run('/usr/bin/osascript', ['-e', MUSIC_SCRIPT]).catch(() => 'none');
+    if (g !== generation) return;
     const parts = out.replace(/\n$/, '').split('\t');
     if (parts.length < 6) { setTrack(null); return; }
     setTrack({
@@ -298,6 +305,27 @@ function createNowPlaying(opts) {
       duration: parseFloat(parts[4]) || 0, elapsed: parseFloat(parts[5]) || 0,
       rate: parts[0] === 'playing' ? 1 : 0, timestamp: Date.now(), app: 'com.apple.Music',
     });
+  }
+
+  // AppleScript / 辅助功能读取可能持续数秒：同一时刻只允许一个轮询，完成后才安排下一次。
+  async function pollGuard(fn) {
+    if (pollBusy) return;
+    const g = generation;
+    pollBusy = true;
+    try { await fn(g); }
+    catch (e) { log('  播放信息轮询失败：' + String(e.message || e).split('\n')[0]); }
+    finally { pollBusy = false; }
+  }
+  function pollLoop(fn, ms, want) {
+    const next = async () => {
+      if (source !== want) return;
+      await pollGuard(fn);
+      if (source !== want) return;
+      pollTimer = setTimeout(next, ms);
+      if (pollTimer.unref) pollTimer.unref();
+    };
+    pollTimer = setTimeout(next, ms);
+    if (pollTimer.unref) pollTimer.unref();
   }
 
   // 系统级：常驻 perl 进程，逐行输出 JSON
@@ -315,12 +343,30 @@ function createNowPlaying(opts) {
       }
     }
     if (source !== 'system' || child) return;
-    child = spawn('/usr/bin/perl', ['-e', 'use DynaLoader; DynaLoader::dl_load_file($ARGV[0], 0) or die DynaLoader::dl_error();', dylib], {
-      env: Object.assign({}, process.env, { NP_RUN: '1', NP_ART_DIR: artDir }), stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    let buf = '';
-    child.stdout.on('data', (d) => {
+    let c;
+    try {
+      c = spawn('/usr/bin/perl', ['-e', 'use DynaLoader; DynaLoader::dl_load_file($ARGV[0], 0) or die DynaLoader::dl_error();', dylib], {
+        env: Object.assign({}, process.env, { NP_RUN: '1', NP_ART_DIR: artDir }), stdio: ['pipe', 'pipe', 'pipe'],
+      });
+    } catch (e) { log('  nowplaying 启动失败：' + e.message); return; }
+    child = c;
+    let buf = '', finished = false;
+    const restart = () => {
+      clearTimeout(childRestart);
+      if (source !== 'system') return;
+      childRestart = setTimeout(startSystem, 5000);
+      if (childRestart.unref) childRestart.unref();
+    };
+    const finish = (reason) => {
+      if (finished || child !== c) return;
+      finished = true; child = null;
+      if (reason) log('  nowplaying 退出：' + reason);
+      restart();
+    };
+    c.stdout.on('data', (d) => {
+      if (child !== c) return;
       buf += d;
+      if (buf.length > 1024 * 1024) { buf = ''; c.kill(); return; }
       let i;
       while ((i = buf.indexOf('\n')) >= 0) {
         const line = buf.slice(0, i);
@@ -334,15 +380,14 @@ function createNowPlaying(opts) {
         } catch (e) { /* 忽略不完整的行 */ }
       }
     });
-    child.stderr.on('data', (d) => log('  nowplaying: ' + String(d).trim()));
-    child.on('exit', () => {
-      child = null;
-      if (source === 'system') childRestart = setTimeout(startSystem, 5000);
-    });
+    c.stderr.on('data', (d) => log('  nowplaying: ' + String(d).trim().slice(0, 500)));
+    c.on('error', (e) => finish(e.code || e.message));
+    c.on('exit', (code, sig) => finish(sig || 'code ' + code));
   }
 
   function stopAll() {
-    clearInterval(pollTimer);
+    generation++;
+    clearTimeout(pollTimer);
     clearTimeout(childRestart);
     pollTimer = null;
     if (child) { const c = child; child = null; c.kill(); }
@@ -357,8 +402,8 @@ function createNowPlaying(opts) {
     stopAll();
     source = want;
     if (want === 'demo') setTrack({ title: '晴天', artist: '周杰伦', album: '叶惠美', duration: 269, elapsed: 26, rate: 1, timestamp: Date.now() });
-    else if (want === 'auto') { pollAuto(); pollTimer = setInterval(pollAuto, 1500); }
-    else if (want === 'music') { pollMusic(); pollTimer = setInterval(() => { if (isActive()) pollMusic(); }, 2000); }
+    else if (want === 'auto') { pollGuard(pollAuto); pollLoop(pollAuto, 1500, 'auto'); }
+    else if (want === 'music') { pollGuard(pollMusic); pollLoop(pollMusic, 2000, 'music'); }
     else if (want === 'system') startSystem();
   }
 
@@ -397,6 +442,7 @@ function createNowPlaying(opts) {
       try { result.tint = JSON.parse(await run(helperBin, ['color', artFile])).tint || null; } catch (e) { /* 无主色 */ }
     }
     result.art = haveArt;
+    if (!track || track.id !== t.id) return; // 封面处理期间也可能已经切歌
     info = result;
     // 只缓存成功的结果；没找到的下次切到这首歌时会重试
     if (res) fs.writeFile(cacheFile, JSON.stringify(result), () => {});
@@ -433,13 +479,17 @@ function createNowPlaying(opts) {
     return fs.existsSync(f) ? f : null;
   }
 
-  // 刚按了播放 / 切歌键后，尽快刷新一次
+  // 刚按了播放 / 切歌键后，尽快刷新一次；慢轮询仍由同一把锁串行化。
   function nudge() {
-    if (source === 'music') setTimeout(pollMusic, 350);
-    if (source === 'auto') { setTimeout(pollAuto, 300); setTimeout(pollAuto, 900); }
+    if (source === 'music') setTimeout(() => pollGuard(pollMusic), 350);
+    if (source === 'auto') {
+      setTimeout(() => pollGuard(pollAuto), 300);
+      setTimeout(() => pollGuard(pollAuto), 900);
+    }
   }
+  function close() { source = null; stopAll(); info = null; }
 
-  return { sync, state, lyrics, artPath, nudge };
+  return { sync, state, lyrics, artPath, nudge, close };
 }
 
 // QQ 音乐主窗口里的「待播列表」：辅助功能文字里，「待播列表」「N首」之后是一串「播放 歌名」按钮

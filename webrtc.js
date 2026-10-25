@@ -8,7 +8,7 @@
 
 const { spawn: spawnProcess } = require('child_process');
 const crypto = require('crypto');
-const { captureError } = require('./input');
+const { captureError, noteStreamFailure, streamBroken, streamRecovered } = require('./input');
 
 let ndc = null;
 try { ndc = require('node-datachannel'); } catch (e) { /* 可选依赖：没装就只用 JPEG 推流 */ }
@@ -19,6 +19,7 @@ function createWebRTC(opts) {
   const log = opts.log || (() => {});
   const peers = new Map(); // socket → peer
   let child = null, buf = Buffer.alloc(0), header = null, params = null, meta = null, restartTimer = null, stopTimer = null, watchdog = null;
+  let streamFails = 0; // 连续「采集流中断且一帧都没出」的次数：系统的连续采集坏掉时尽快让 iPad 改用截图兼容模式
   const now = opts.now || Date.now;
 
   // 看门狗：连接已建立却一直没收到画面（静止画面下新观看者拿不到关键帧，或常驻采集进程失效）时，
@@ -56,7 +57,7 @@ function createWebRTC(opts) {
   function writeChild(line) { try { if (child && !child.stdin.destroyed) child.stdin.write(line + '\n'); } catch (e) { /* 退出处理负责 */ } }
 
   function ensureEncoder() {
-    clearTimeout(stopTimer);
+    clearTimeout(stopTimer); clearTimeout(restartTimer);
     const want = wanted();
     if (!want) return;
     if (child && params && params.virtual === want.virtual) {
@@ -74,18 +75,23 @@ function createWebRTC(opts) {
     let c;
     try { c = spawn(helperBin, args, { stdio: ['pipe', 'pipe', 'pipe'] }); } catch (e) { return broadcast({ t: 'rtc-error', err: 'encoder-start' }); }
     child = c; buf = Buffer.alloc(0); header = null; meta = null;
-    c.stdin.on('error', () => {});
-    c.stderr.on('data', (d) => log('  h264: ' + String(d).trim().slice(0, 240)));
-    c.stdout.on('data', (d) => { if (child === c) parse(d); });
-    c.on('error', () => {});
-    c.on('exit', (code, sig) => {
-      if (child !== c) return;
-      child = null;
-      log('  h264 退出：' + (sig || 'code ' + code));
+    let finished = false;
+    const finish = (code, sig, error) => {
+      if (finished || child !== c) return;
+      finished = true; child = null; buf = Buffer.alloc(0); header = null;
+      log('  h264 退出：' + (error || sig || 'code ' + code));
       if (code === 3) return broadcast({ t: 'rtc-error', err: 'screen-permission' });
       if (code === 4) return broadcast({ t: 'rtc-error', err: 'virtual-display-unavailable' });
-      if (peers.size) restartTimer = setTimeout(ensureEncoder, 1500);
-    });
+      if (peers.size) {
+        clearTimeout(restartTimer); restartTimer = setTimeout(ensureEncoder, 1500);
+        if (restartTimer.unref) restartTimer.unref();
+      }
+    };
+    c.stdin.on('error', (e) => { finish(null, null, e.code || 'stdin'); c.kill(); });
+    c.stderr.on('data', (d) => log('  h264: ' + String(d).trim().slice(0, 240)));
+    c.stdout.on('data', (d) => { if (child === c) parse(d); });
+    c.on('error', (e) => finish(null, null, e.code || e.message));
+    c.on('exit', (code, sig) => finish(code, sig));
   }
 
   function broadcast(obj) { peers.forEach((p) => p.send(obj)); }
@@ -103,7 +109,10 @@ function createWebRTC(opts) {
         if (!h.ok) {
           // 权限被拒要告诉 iPad；其它采集中断由 helper 自动重建，不让 iPad 退回 JPEG
           if (captureError(h.err) === 'screen-permission') { broadcast({ t: 'rtc-error', err: 'screen-permission' }); continue; }
-          log('  h264 采集：' + (h.err || '未知错误')); continue;
+          log('  h264 采集：' + (h.err || '未知错误'));
+          noteStreamFailure();
+          if (++streamFails >= 2) { streamFails = 0; broadcast({ t: 'rtc-error', err: 'stream-unavailable' }); }
+          continue;
         }
         if (h.kind === 'health' || h.kind === 'virtual') continue;
         if (h.kind === 'moved') { broadcast({ t: 'rtc-moved', done: !!h.done, app: h.app || '' }); continue; }
@@ -114,7 +123,7 @@ function createWebRTC(opts) {
       if (buf.length < header.bytes) return;
       const frame = Buffer.from(buf.subarray(0, header.bytes));
       buf = buf.subarray(header.bytes);
-      const h = header; header = null;
+      const h = header; header = null; if (streamFails || streamBroken()) streamRecovered(); streamFails = 0;
       if (h.pw && meta && (meta.pw !== h.pw || meta.ph !== h.ph)) updateMeta(Object.assign({}, meta, { pw: h.pw, ph: h.ph }));
       peers.forEach((p) => {
         if (!p.open) return;
@@ -137,6 +146,7 @@ function createWebRTC(opts) {
 
   function start(socket, clientId, m, send) {
     if (!ndc) return send({ t: 'rtc-error', err: 'unavailable' });
+    if (streamBroken()) return send({ t: 'rtc-error', err: 'stream-unavailable' }); // 系统连续采集暂不可用：直接用截图兼容画面
     stop(socket);
     const ssrc = crypto.randomBytes(4).readUInt32BE(0) >>> 1;
     const pc = new ndc.PeerConnection('ipadduo-' + clientId.slice(0, 16), { iceServers: [], disableAutoNegotiation: false });

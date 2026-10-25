@@ -9,6 +9,17 @@ const KEY_RE = /^[a-z0-9+⌘⇧⌥⌃\-=\[\];',./`\\ ]{1,40}$/i;
 const CLIENT_RE = /^[a-z0-9-]{8,80}$/i;
 
 // 屏幕录制权限被拒（包括 macOS 定期复核时被关掉）时 ScreenCaptureKit 只返回一句本地化的 TCC 错误：统一归为 screen-permission
+// 系统的连续采集（ScreenCaptureKit 流）坏掉时（内存吃紧、replayd 异常），反复启动采集流会拖慢单张截图，
+// 让兼容画面一卡一卡。1 分钟内中断两次就判定「暂不可用」2 分钟：期间推流请求立即回绝，只用截图。
+const streamHealth = { fails: [], brokenUntil: 0 };
+function noteStreamFailure(now) {
+  const t = now || Date.now();
+  streamHealth.fails = streamHealth.fails.filter((x) => t - x < 60000).concat(t);
+  if (streamHealth.fails.length >= 2) { streamHealth.brokenUntil = t + 120000; streamHealth.fails = []; }
+}
+function streamBroken(now) { return (now || Date.now()) < streamHealth.brokenUntil; }
+function streamRecovered() { streamHealth.fails = []; streamHealth.brokenUntil = 0; }
+
 function captureError(err) {
   const e = String(err || 'capture');
   return /TCC|拒绝|declined|denied|not authori[sz]ed|permission/i.test(e) ? 'screen-permission' : e;
@@ -171,7 +182,16 @@ function createInput(opts) {
       if (capWaiter) { const w = capWaiter; capWaiter = null; w(JSON.stringify({ ok: 0, err: reason })); }
     };
     c.on('error', (e) => finish(e.code || 'capture')); c.on('exit', () => finish('exit')); c.stdin.on('error', () => { finish('stdin'); c.kill(); });
-    c.stdout.on('data', (d) => { if (capChild !== c) return; buf += d; let i; while ((i = buf.indexOf('\n')) >= 0) { const line = buf.slice(0, i); buf = buf.slice(i + 1); if (capWaiter) { const w = capWaiter; capWaiter = null; w(line); } } });
+    c.stdout.on('data', (d) => {
+      if (capChild !== c) return;
+      buf += d;
+      if (buf.length > 1024 * 1024) { buf = ''; finish('overflow'); c.kill(); return; }
+      let i;
+      while ((i = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, i); buf = buf.slice(i + 1);
+        if (capWaiter) { const w = capWaiter; capWaiter = null; w(line); }
+      }
+    });
     return c;
   }
   async function frame(width, id) {
@@ -275,14 +295,18 @@ function createInput(opts) {
         let h; try { h = JSON.parse(g.buf.subarray(0, i).toString()); } catch (e) { if (g.child) g.child.kill(); return; }
         g.buf = g.buf.subarray(i + 1); g.lastHealth = Date.now();
         if (h.kind === 'health') { broadcast(g, { t: 'screenhealth', at: Date.now() }); continue; }
-        if (!h.ok) { broadcast(g, { t: 'screenerr', err: captureError(h.err) }); continue; }
+        if (!h.ok) {
+          const e = captureError(h.err);
+          if (e !== 'screen-permission' && e !== 'no-window') noteStreamFailure();
+          broadcast(g, { t: 'screenerr', err: e }); continue;
+        }
         if (!Number.isSafeInteger(h.bytes) || h.bytes < 1 || h.bytes > 12 * 1024 * 1024) { if (g.child) g.child.kill(); return; }
         g.header = h;
       }
       if (g.buf.length < g.header.bytes) return;
       const jpg = Buffer.from(g.buf.subarray(0, g.header.bytes)); g.buf = g.buf.subarray(g.header.bytes);
       const meta = g.header; g.header = null; meta.frameId = epoch + '-' + (++sequence);
-      g.latest = { meta, jpg }; g.credited = false; g.failures = 0; pump(g);
+      g.latest = { meta, jpg }; g.credited = false; g.failures = 0; if (streamHealth.fails.length || streamHealth.brokenUntil) streamRecovered(); pump(g);
     }
   }
   function pump(g) {
@@ -319,6 +343,7 @@ function createInput(opts) {
   function subscribe(socket, m, id) {
     unsubscribe(socket);
     if (!m.on) return;
+    if (streamBroken()) { message(socket, { t: 'screenerr', err: 'stream-unavailable' }); return; }
     const p = profile(m), g = group(p.key);
     g.subs.set(socket, { ...p, client: id, subscription: typeof m.subscription === 'string' ? m.subscription.slice(0, 100) : null, ready: true, lastSent: '', nextAt: 0, ackTimer: null });
     start(g); pump(g);
@@ -394,4 +419,4 @@ function createInput(opts) {
   return { upgrade, handle, front, frame, thumb, typeText, close, clientId, registerMeta, setRTC: (r) => { rtc = r; }, key: (k) => KEY_RE.test(k) && cmd('key ' + k),
     status: () => ({ sessions: sessions.size, streams: [...streams.values()].map((g) => ({ profile: g.key, viewers: g.subs.size, ...g.params, healthy: !!g.child && Date.now() - g.lastHealth < 10000 })) }) };
 }
-module.exports = { createInput, captureError };
+module.exports = { createInput, captureError, noteStreamFailure, streamBroken, streamRecovered };

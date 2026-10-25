@@ -246,7 +246,7 @@
   }
 
   function tileHtml(t) {
-    return '<div class="tile s-' + esc(t.size || 's') + '" data-id="' + esc(t.id) + '" style="' + tileBg(t) + '">' +
+    return '<div class="tile s-' + esc(t.size || 's') + '" data-id="' + esc(t.id) + '" role="button" tabindex="0" aria-label="' + esc(t.label || '未命名') + '" style="' + tileBg(t) + '">' +
       artHtml(t) +
       '<div class="shade"></div>' +
       '<div class="txt"><b>' + esc(t.label || '未命名') + '</b><small>' + esc(subtitle(t)) + '</small></div>' +
@@ -293,26 +293,29 @@
     positionTrack(false);
   }
 
-  // 布局：横屏 3 行 × 6 列、竖屏 5 行 × 4 列；磁贴尽量接近正方形；
-  // 一行放不满时按实际数量收窄并居中，内容不足一屏时垂直居中（见 CSS .grid margin:auto）
+  // 布局：iPad 横屏 3 × 6、竖屏 5 × 4；手机竖屏两列、横屏四列，避免把 iPad 布局直接缩小。
+  function compactPhone() { return Math.min(window.innerWidth, window.innerHeight) <= 430; }
   var GAP = 16;
-  var metrics = { W: 0, cols: 6, colW: 150, rh: 150 };
+  var metrics = { W: 0, cols: 6, colW: 150, rh: 150, phone: false };
 
   function layout() {
     if (!config) return;
     var stage = $('stage');
-    var W = stage.clientWidth, H = stage.clientHeight - 16;
+    var W = stage.clientWidth, H = stage.clientHeight - (compactPhone() ? 12 : 16);
     // 主页区域的实际宽度（分屏时只有一半）：窄时 Dock 收起音量条与文字，避免挤出屏幕
     var appW = $('app').clientWidth || W;
+    var phone = compactPhone();
     setClass(document.body, 'app-narrow', appW < 820); setClass(document.body, 'app-tiny', appW < 600);
-    var inner = W - (W < 700 ? 28 : 44); // 减去页面左右内边距
+    setClass(document.body, 'app-phone', phone);
+    var inner = W - (phone ? 24 : W < 700 ? 28 : 44); // 减去页面左右内边距
     var landscape = window.innerWidth > window.innerHeight;
-    var cols = config.settings.columns || (inner < 600 ? 3 : landscape ? 6 : 4);
-    var rows = landscape ? 3 : 5;
+    var cols = config.settings.columns || (phone ? (landscape ? 4 : 2) : inner < 600 ? 3 : landscape ? 6 : 4);
+    var rows = phone ? (landscape ? 2 : 4) : landscape ? 3 : 5;
+    GAP = phone ? 10 : 16;
     var colW = Math.floor((inner - GAP * (cols - 1)) / cols);
     var rh = Math.floor((H - GAP * (rows - 1)) / rows);
-    rh = Math.max(96, Math.min(rh, Math.round(colW * 1.04), 230));
-    metrics = { W: W, cols: cols, colW: colW, rh: rh, H: H, rows: rows };
+    rh = Math.max(phone ? 72 : 96, Math.min(rh, Math.round(colW * 1.04), 230));
+    metrics = { W: W, cols: cols, colW: colW, rh: rh, H: H, rows: rows, phone: phone };
     var track = $('track');
     track.style.setProperty('--rh', rh + 'px');
     track.className = 'track' + (rh < 128 ? ' compact' : '');
@@ -332,11 +335,11 @@
     config.pages[i].tiles.forEach(function (t) { used += (t.size === 'w' || t.size === 'l') ? 2 : 1; });
     var c = used > 0 && used < metrics.cols ? used : metrics.cols;
     sec.firstChild.style.gridTemplateColumns = 'repeat(' + c + ', ' + metrics.colW + 'px)';
-    // 磁贴多于一屏时先压缩行高（不低于 104px），尽量一页看全；还放不下才在页内上下滚动
+    // 磁贴多于一屏时先压缩行高；手机允许更紧凑的行高，但保持可读的图标和文字。
     var cells = editing ? 1 : 0;
     config.pages[i].tiles.forEach(function (t) { cells += t.size === 'l' ? 4 : (t.size === 'w' || t.size === 't') ? 2 : 1; });
     var need = Math.ceil(cells / metrics.cols), rh = metrics.rh;
-    if (need > metrics.rows) rh = Math.max(104, Math.floor((metrics.H - GAP * (need - 1)) / need));
+    if (need > metrics.rows) rh = Math.max(metrics.phone ? 80 : 104, Math.floor((metrics.H - GAP * (need - 1)) / need));
     sec.style.setProperty('--rh', rh + 'px');
     setClass(sec, 'compact', rh < 128);
   }
@@ -860,6 +863,7 @@
   var DEVICE = (function () {
     var ua = navigator.userAgent;
     var isIPad = /iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    var isPhone = /iPhone|iPod/.test(ua);
     var m = ua.match(/OS (\d+)_(\d+)/) || ua.match(/Version\/(\d+)\.(\d+)/);
     var os = m ? parseInt(m[1], 10) : 0;
     var s = Math.min(window.screen.width, window.screen.height), l = Math.max(window.screen.width, window.screen.height);
@@ -871,14 +875,17 @@
       '810x1080': 'iPad（10.2 英寸）',
       '820x1180': 'iPad Air 4 / 5 / iPad 10',
       '834x1194': 'iPad Pro 11',
-      '1024x1366': 'iPad Pro 12.9'
+      '1024x1366': 'iPad Pro 12.9',
+      '414x736': 'iPhone 6 Plus / 6s Plus / 7 Plus / 8 Plus',
+      '375x667': 'iPhone 6 / 6s / 7 / 8 / SE（第二代）'
     };
-    var name = isIPad ? (MODELS[key] || 'iPad（' + key + '）') : (navigator.maxTouchPoints > 0 ? '触屏设备' : '电脑浏览器');
-    var autoTier = isIPad && os && os <= 12 ? 'lite' : isIPad && os < 16 ? 'balanced' : 'full';
+    var name = isIPad ? (MODELS[key] || 'iPad（' + key + '）') : isPhone ? (MODELS[key] || 'iPhone（' + key + '）') : (navigator.maxTouchPoints > 0 ? '触屏设备' : '电脑浏览器');
+    var mobile = isIPad || isPhone;
+    var autoTier = mobile && os && os <= 12 ? 'lite' : mobile && os < 16 ? 'balanced' : 'full';
     var forced = store('deck-tier');
     var tier = forced === 'lite' || forced === 'balanced' || forced === 'full' ? forced : autoTier;
     return {
-      isIPad: isIPad, os: os, name: name, key: key, autoTier: autoTier, tier: tier,
+      isIPad: isIPad, isPhone: isPhone, os: os, name: name, key: key, autoTier: autoTier, tier: tier,
       // 随航需要 iPadOS 13+；iPad mini 2 这类 iOS 12 设备不支持
       sidecar: isIPad && os >= 13,
       reducedMotion: !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches),
@@ -1199,6 +1206,8 @@
     setClass(el, 'ch-s', h < 560); setClass(el, 'c-port', h > w * 1.08);
   }
   function tpSetSize(size) {
+    // 手机上半屏控件不足以容纳触控目标，自动使用全屏；iPad 保留分屏。
+    if (compactPhone() && (size === 'split' || size === 'min')) size = 'full';
     if (size === 'min') { tpCancel(); scrStop(); ctlStop(); }
     var wasMin = tp.size === 'min';
     tp.size = size;
@@ -1322,17 +1331,28 @@
   }
   function fbLoad(i, dir) {
     var seq = ++fb.seq;
+    fb.cols.length = i; fb.file = null;
+    fb.cols[i] = { path: dir, loading: true, sel: -1 };
+    fbRenderFrom(i);
     api('GET', '/api/fs/list?' + fbQS(dir)).then(function (r) {
       if (seq !== fb.seq || !fb.open) return;
-      fb.cols.length = i; fb.file = null;
-      fb.cols[i] = { data: r, sel: -1 };
+      fb.cols[i] = { data: r, path: dir, sel: -1 };
       fbRenderFrom(i);
-    }, function (e) { toast(e.message, true); if (!fb.cols.length) fbClose(); });
+    }, function (e) {
+      if (seq !== fb.seq || !fb.open) return;
+      fb.cols[i] = { path: dir, error: e.message || '加载失败', sel: -1 };
+      fbRenderFrom(i);
+    });
   }
   function fbColHTML(i) {
-    var c = fb.cols[i], r = c.data;
+    var c = fb.cols[i];
+    if (!c.data) {
+      return '<div class="fb-col-h">' + (i === 0 && fb.label ? esc(fb.label) : '文件夹') + '</div>' +
+        '<div class="fb-list"><div class="fb-state" role="status">' + (c.loading ? '正在加载…' : '<b>无法打开文件夹</b><span>' + esc(c.error) + '</span><button class="pill" type="button" data-fb="retry" data-col="' + i + '">重试</button>') + '</div></div>';
+    }
+    var r = c.data;
     var rows = r.entries.map(function (e, j) {
-      return '<div class="fb-row k-' + e.kind + (j === c.sel ? ' sel' : '') + '" data-fb="item" data-col="' + i + '" data-idx="' + j + '"><i class="fb-ic"></i><span>' + esc(e.name) + '</span>' + (e.dir ? '<b>›</b>' : '') + '</div>';
+      return '<div class="fb-row k-' + e.kind + (j === c.sel ? ' sel' : '') + '" data-fb="item" data-col="' + i + '" data-idx="' + j + '" role="button" tabindex="0"><i class="fb-ic"></i><span>' + esc(e.name) + '</span>' + (e.dir ? '<b>›</b>' : '') + '</div>';
     }).join('');
     var title = i === 0 && fb.label ? fb.label : r.name;
     return '<div class="fb-col-h">' + esc(title) + (r.total > r.entries.length ? ' · 仅显示前 ' + r.entries.length + ' 项' : '') + '</div>' +
@@ -1353,16 +1373,26 @@
       var d = document.createElement('div'); d.className = 'fb-col'; d.innerHTML = fbColHTML(k); box.appendChild(d);
     }
     if (fb.file) {
-      var p = document.createElement('div'); p.className = 'fb-col fb-prev'; p.innerHTML = fbPreviewHTML(fb.file); box.appendChild(p);
+      var file = fb.file;
+      var p = document.createElement('div'); p.className = 'fb-col fb-prev'; p.innerHTML = fbPreviewHTML(file); box.appendChild(p);
       var th = p.querySelector('.fb-thumb');
-      if (th) { var img = new Image(); img.onerror = function () { th.className = 'fb-thumb none k-' + fb.file.kind; th.style.backgroundImage = ''; th.innerHTML = '<i class="fb-ic"></i>'; }; img.src = th.style.backgroundImage.replace(/^url\(["']?|["']?\)$/g, ''); }
+      if (th) { var img = new Image(); img.onerror = function () { th.className = 'fb-thumb none k-' + file.kind; th.style.backgroundImage = ''; th.innerHTML = '<i class="fb-ic"></i>'; }; img.src = th.style.backgroundImage.replace(/^url\(["']?|["']?\)$/g, ''); }
     }
     fbPath(); fbScrollEnd();
   }
+  function fbCurrentPath() {
+    if (fb.file) return fb.file.path;
+    for (var i = fb.cols.length - 1; i >= 0; i--) if (fb.cols[i].data) return fb.cols[i].data.path;
+    return '';
+  }
   function fbPath() {
-    var names = fb.cols.map(function (c, i) { return i === 0 && fb.label ? fb.label : c.data.name; });
+    var names = fb.cols.map(function (c, i) {
+      if (i === 0 && fb.label) return fb.label;
+      return c.data ? c.data.name : c.loading ? '载入中…' : '无法载入';
+    });
     if (fb.file) names.push(fb.file.name);
     $('fbPath').innerHTML = '<span>' + esc(names.join('  ›  ')) + '</span>';
+    $('fb').querySelector('[data-fb="finder"]').textContent = fb.file ? '打开所选文件' : '打开当前文件夹';
   }
   // 平滑滚到最右（新展开的一栏）；省电档直接跳过去
   function fbScrollEnd() {
@@ -1381,13 +1411,22 @@
   function fbTap(el) {
     var a = el.getAttribute('data-fb');
     if (a === 'close') return fbClose();
-    var cur = fb.file ? fb.file.path : fb.cols.length ? fb.cols[fb.cols.length - 1].data.path : '';
-    if (a === 'finder') return api('POST', '/api/fs/open', { path: fb.cols.length ? fb.cols[fb.cols.length - 1].data.path : '' }).then(function () { toast('已在 Mac 上打开'); }, function (e) { toast(e.message, true); });
+    if (a === 'retry') {
+      var ri = parseInt(el.getAttribute('data-col'), 10), rc = fb.cols[ri];
+      if (rc) fbLoad(ri, rc.path);
+      return;
+    }
+    var cur = fbCurrentPath();
+    if (a === 'finder') {
+      if (!cur) return toast('文件夹尚未加载完成', true);
+      return api('POST', '/api/fs/open', { path: cur }).then(function () { toast(fb.file ? '已在 Mac 上打开文件' : '已在 Mac 上打开文件夹'); }, function (e) { toast(e.message, true); });
+    }
     if (a === 'open' || a === 'reveal') return api('POST', '/api/fs/open', { path: cur, reveal: a === 'reveal' }).then(function () { toast(a === 'open' ? '已在 Mac 上打开' : '已在 Finder 中显示'); }, function (e) { toast(e.message, true); });
     if (a !== 'item') return;
     var i = parseInt(el.getAttribute('data-col'), 10), j = parseInt(el.getAttribute('data-idx'), 10), c = fb.cols[i];
-    if (!c) return;
+    if (!c || !c.data) return;
     var entry = c.data.entries[j];
+    if (!entry) return;
     var old = el.parentNode.querySelector('.fb-row.sel'); if (old) setClass(old, 'sel', false);
     setClass(el, 'sel', true); c.sel = j;
     fb.seq++;
@@ -1967,7 +2006,10 @@
     scr.streaming = false; clearTimeout(scr.watch); clearTimeout(scr.retry); clearTimeout(scr.timer); scrAbortLoad();
     scrMsg(error === 'screen-permission' ? '需要屏幕录制权限：请在 Mac 的 iPadDuo 设置向导中授权' : '画面恢复中，正在使用兼容连接…');
     scr.timer = setTimeout(scrNext, error === 'screen-permission' ? 4000 : 300);
-    scr.retry = setTimeout(function () { if (scr.on && tp.ready && !document.hidden) scrSubscribe(); }, error === 'screen-permission' ? 15000 : 6000);
+    // 推流反复失败时（系统的连续采集坏了），按 6 → 12 → 24 → … 60 秒退避重试，期间截图兼容连接保持流畅
+    scr.streamFails = (scr.streamFails || 0) + 1;
+    var wait = error === 'screen-permission' ? 15000 : Math.min(60000, 6000 * Math.pow(2, scr.streamFails - 1));
+    scr.retry = setTimeout(function () { if (scr.on && tp.ready && !document.hidden) scrSubscribe(); }, wait);
   }
   // 在离屏图片中完成解码，再在同一个任务中提交图像与元数据。
   function scrDisplay(blob, meta, bytes, done) {
@@ -2013,6 +2055,7 @@
     if (!meta || !meta.frameId) return;
     scrDisplay(blob, meta, bytes, function () {
       if (!scr.on || !scr.streaming) return;
+      scr.streamFails = 0;
       if (scr.reprofile) scrSubscribe();
       else tpSend({ t: 'fack', frameId: meta.frameId, subscription: scr.subscription });
     });
@@ -2556,6 +2599,7 @@
     lastTouchAt = Date.now();
     if (e.type === 'mousedown') { if (Date.now() - lastTouch < 800 || e.button !== 0) return; }
     else lastTouch = Date.now();
+    if (src.open && !closest(e.target, '#srcSheet') && !closest(e.target, '#srcBtn')) srcOpen(false);
     if (closest(e.target, '.sheet-wrap') || closest(e.target, '#tp') || closest(e.target, '#fb')) return;
 
     var el = closest(e.target, '[data-src], .tile, .dk, .pill, .tab, #volTrack, [data-np], [data-tp], #stageTab');
@@ -2676,6 +2720,7 @@
     if (el.getAttribute('data-tp') === 'open') { clearTimeout(stageTimer); stageIntent++; ctl.pin = ''; ctl.browserView = 'auto'; return tpOpen('ctrl', 'full'); } // 遥控入口：跟随 Mac 前台
     if (el.id === 'stageTab') return tpSetSize('split');
     if (npAct === 'close') return npHide(true);
+    if (el.id === 'settingsBtn') return openSettings();
     if (el.id === 'editBtn') return toggleEdit();
     var act = el.getAttribute('data-act');
     if (act) editAction(act);
@@ -2697,6 +2742,22 @@
   document.addEventListener('mousedown', onStart, false);
   document.addEventListener('mousemove', function (e) { if (press || volDragging) onMove(e); }, false);
   document.addEventListener('mouseup', function (e) { if (Date.now() - lastTouch > 800) onEnd(e); }, false);
+  document.addEventListener('keydown', function (e) {
+    var actionEl = closest(e.target, '.tile[role="button"], #mini[role="button"], .fb-row[role="button"]');
+    if (actionEl && (e.keyCode === 13 || e.keyCode === 32)) {
+      e.preventDefault();
+      if (closest(actionEl, '#fb')) fbTap(actionEl); else tap(actionEl);
+      return;
+    }
+    if (e.keyCode !== 27) return;
+    if ($('picker').className.indexOf('open') >= 0) closePicker();
+    else if ($('sheet').className.indexOf('open') >= 0) closeSheet();
+    else if (src.open) srcOpen(false);
+    else if (fb.open) fbClose();
+    else if (np.visible) npHide(true);
+    else if (tp.visible) tpClose();
+    else if (editing) toggleEdit();
+  }, false);
 
   // ---------- 拖动排序 ----------
 
@@ -2810,7 +2871,8 @@
         pageIndex--;
         config.pages.splice(pageIndex, 0, p);
         store('deck-page', String(pageIndex));
-        persist(); renderTabs();
+        // 配置顺序与横向轨道必须一起更新，否则页签和页面内容会错位。
+        persist(); renderPages(); positionTrack(false);
         return;
       }
       case 'del-page': {
@@ -2849,10 +2911,11 @@
 
   // ---------- 磁贴编辑器 ----------
 
-  var draft = null, draftPageIndex = 0, editingId = null, sheetSave = null, sheetMode = 'tile';
+  var draft = null, draftPageIndex = 0, editingId = null, sheetSave = null, sheetMode = 'tile', sheetDirty = false;
 
   function openEditor(id) {
     sheetMode = 'tile';
+    sheetDirty = false;
     $('sheetBody').onclick = null;
     editingId = id;
     draftPageIndex = pageIndex;
@@ -2867,7 +2930,9 @@
     $('sheet').className = 'sheet-wrap open';
   }
 
-  function closeSheet() {
+  function closeSheet(force) {
+    if (!force && sheetDirty && !window.confirm('放弃尚未保存的修改？')) return;
+    sheetDirty = false;
     $('sheet').className = 'sheet-wrap';
     if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   }
@@ -2970,6 +3035,7 @@
     if (sheetMode !== 'tile') return;
     var b = closest(e.target, 'button');
     if (!b) return;
+    if (!b.getAttribute('data-ed') && !b.getAttribute('data-pick')) sheetDirty = true;
     var segEl = closest(b, '[data-seg]');
     if (segEl) {
       var name = segEl.getAttribute('data-seg'), v = b.getAttribute('data-v');
@@ -3004,15 +3070,15 @@
     } else if (ed === 'dup') {
       var copy = clone(draft); copy.id = uid(); copy.label = (copy.label || '') + ' 副本';
       config.pages[draftPageIndex].tiles.splice(indexOfTile(editingId) + 1, 0, copy);
-      persist(); closeSheet(); renderGrid();
+      persist(); closeSheet(true); renderGrid();
     } else if (ed === 'first') {
       var tiles = page().tiles, idx = indexOfTile(editingId);
       tiles.unshift(tiles.splice(idx, 1)[0]);
-      persist(); closeSheet(); renderGrid();
+      persist(); closeSheet(true); renderGrid();
     } else if (ed === 'delete') {
       if (!window.confirm('删除磁贴「' + (draft.label || '未命名') + '」？')) return;
       page().tiles.splice(indexOfTile(editingId), 1);
-      persist(); closeSheet(); renderGrid();
+      persist(); closeSheet(true); renderGrid();
     }
   }, false);
 
@@ -3022,9 +3088,10 @@
   }
 
   function onField(e) {
-    if (sheetMode !== 'tile') return;
     var f = e.target.getAttribute && e.target.getAttribute('data-f');
     if (!f) return;
+    sheetDirty = true;
+    if (sheetMode !== 'tile') return;
     if (f === 'page') { draftPageIndex = parseInt(e.target.value, 10); return; }
     if (f === 'target') { delete draft._tint; delete draft._plate; }
     draft[f] = e.target.value;
@@ -3059,8 +3126,9 @@
       config.pages[draftPageIndex].tiles.push(t);
     }
     persist();
-    closeSheet();
+    closeSheet(true);
     renderGrid();
+    if (draftPageIndex !== pageIndex) renderPage(draftPageIndex);
     setTimeout(refreshTints, 700);
     toast(draftPageIndex === pageIndex ? '已保存' : '已保存到「' + config.pages[draftPageIndex].name + '」');
   }
@@ -3104,6 +3172,7 @@
     if (!b) return;
     var name = b.getAttribute('data-name');
     var prevAuto = !draft.label || draft.label === draft.target || draft.label === draft._display;
+    sheetDirty = true;
     draft.target = name;
     delete draft._tint; delete draft._plate;
     draft._display = b.getAttribute('data-display');
@@ -3154,6 +3223,7 @@
   function openSettings() {
     var s = config.settings;
     sheetMode = 'settings';
+    sheetDirty = false;
     $('sheetTitle').textContent = '设置';
     var ON = [{ k: '1', n: '开启' }, { k: '', n: '关闭' }];
     $('sheetBody').innerHTML =
@@ -3189,10 +3259,26 @@
       field('pin', '访问 PIN（可选）', s.pin || '', '留空表示局域网内无需验证',
         '<p class="hint">设置后，新设备首次访问需要输入 PIN。服务本身只接受局域网地址的请求，并拒绝跨站请求。</p>') +
       '<div class="sheet-actions"><button class="pill" type="button" id="reloadBtn">重新加载页面</button></div>';
+    var sectionNames = {
+      '这台设备': '设备与显示', '点开文件夹磁贴': '触控与副屏',
+      '点开磁贴后': '播放与自动化', '访问 PIN（可选）': '安全与高级'
+    };
+    var settingRows = $('sheetBody').children;
+    for (var si = settingRows.length - 1; si >= 0; si--) {
+      var settingLabel = settingRows[si].getElementsByTagName('label')[0];
+      var sectionName = settingLabel && sectionNames[settingLabel.textContent];
+      if (!sectionName) continue;
+      var section = document.createElement('div');
+      section.className = 'settings-section'; section.textContent = sectionName;
+      $('sheetBody').insertBefore(section, settingRows[si]);
+    }
+    // 所有设置先进入草稿，保存时一次提交；取消不会留下本机设置或主题副作用。
     var temp = {
       voiceKey: s.voiceKey || 'fn', autoStage: s.autoStage !== false, folderBrowser: s.folderBrowser !== false,
       showDock: s.showDock !== false, columns: s.columns || 0, keepAwake: s.keepAwake !== false,
-      autoLyrics: s.autoLyrics !== false, lyricsOnline: s.lyricsOnline !== false, nowPlaying: s.nowPlaying || 'auto'
+      autoLyrics: s.autoLyrics !== false, lyricsOnline: s.lyricsOnline !== false, nowPlaying: s.nowPlaying || 'auto',
+      tier: store('deck-tier') || '', theme: store('deck-theme') || 'dark', rtc: store('deck-rtc') || '',
+      pointerSpeed: store('deck-pointer-speed') || 'normal', pointerAccel: store('deck-pointer-accel') || 'on'
     };
     $('sheetBody').onclick = function (e) {
       var b = closest(e.target, 'button');
@@ -3202,27 +3288,28 @@
       if (b.getAttribute('data-sidecar')) return sidecarConnect(b.getAttribute('data-sidecar'), b.getAttribute('data-on') === '1');
       var sg = closest(b, '[data-seg]');
       if (!sg) return;
+      sheetDirty = true;
       var name = sg.getAttribute('data-seg'), v = b.getAttribute('data-v');
       if (name === 'columns') temp.columns = parseInt(v, 10);
-      else if (name === 'tier') { store('deck-tier', v); toast('重新加载页面后生效'); }
-      else if (name === 'pointerSpeed') store('deck-pointer-speed', v);
-      else if (name === 'theme') { store('deck-theme', v); themeApply(); }
-      else if (name === 'rtc') { store('deck-rtc', v); toast(v === 'off' ? '下次进入副屏时使用兼容模式' : '下次进入副屏时优先使用硬件视频'); }
-      else if (name === 'pointerAccel') store('deck-pointer-accel', v);
-      else if (name === 'nowPlaying' || name === 'voiceKey') temp[name] = v;
+      else if (/^(tier|theme|rtc|pointerSpeed|pointerAccel|nowPlaying|voiceKey)$/.test(name)) temp[name] = v;
       else temp[name] = !!v;
       var all = sg.querySelectorAll('button');
       for (var i = 0; i < all.length; i++) all[i].className = all[i] === b ? 'on' : '';
     };
     sheetSave = function () {
       var pin = $('sheetBody').querySelector('[data-f="pin"]').value.trim();
+      store('deck-tier', temp.tier); store('deck-theme', temp.theme); store('deck-rtc', temp.rtc);
+      store('deck-pointer-speed', temp.pointerSpeed); store('deck-pointer-accel', temp.pointerAccel);
+      ['tier', 'theme', 'rtc', 'pointerSpeed', 'pointerAccel'].forEach(function (k) { delete temp[k]; });
       Object.keys(temp).forEach(function (k) { config.settings[k] = temp[k]; });
       config.settings.pin = pin;
-      if (pin) store('deck-pin', pin);
+      if (pin) store('deck-pin', pin); else store('deck-pin', '');
       $('sheetBody').onclick = null;
-      persist(); closeSheet(); render();
+      sheetDirty = false;
+      persist(); closeSheet(); themeApply(); render();
       keepAwakeKick();
       liveSoon(300);
+      toast('设置已保存');
     };
     $('sheet').className = 'sheet-wrap open';
   }

@@ -10,7 +10,7 @@
 <meta name="theme-color" content="#0a0b0d">
 <link rel="apple-touch-icon" href="touch-icon.png">
 <title>iPadDuo</title>
-<link rel="stylesheet" href="app.css?v=15">
+<link rel="stylesheet" href="app.css?v=16">
 </head>
 <body>
 <div id="app">
@@ -19,7 +19,8 @@
     <nav class="tabs" id="tabs"></nav>
     <div class="bar-right">
       <span class="host" id="hostName">连接中…</span>
-      <span class="conn" id="conn"></span>
+      <span class="conn" id="conn" aria-label="连接状态"></span>
+      <button class="pill" id="settingsBtn" type="button" aria-label="设置">设置</button>
       <button class="pill" id="editBtn" type="button">编辑</button>
     </div>
   </header>
@@ -32,7 +33,6 @@
     <button class="pill" data-act="rename-page" type="button">重命名页面</button>
     <button class="pill" data-act="move-page" type="button">页面左移</button>
     <button class="pill danger" data-act="del-page" type="button">删除页面</button>
-    <button class="pill" data-act="settings" type="button">设置</button>
   </div>
 
   <main class="stage" id="stage">
@@ -41,18 +41,18 @@
   <div class="dots" id="dots"></div>
 
   <footer class="dock" id="dock">
-    <div class="mini" id="mini" data-np="open">
+    <div class="mini" id="mini" data-np="open" role="button" tabindex="0" aria-label="打开正在播放">
       <div class="mini-art" id="miniArt"><i class="eq"><b></b><b></b><b></b></i></div>
       <div class="mini-txt"><b id="miniTitle">未在播放</b><small id="miniSub">打开音乐类磁贴开始</small></div>
     </div>
-    <button class="dk dk-src" id="srcBtn" data-src="open" type="button"><i class="src-stack"><b></b><b></b></i><span id="srcCount"></span></button>
+    <button class="dk dk-src" id="srcBtn" data-src="open" type="button" aria-label="选择播放来源"><i class="src-stack"><b></b><b></b></i><span id="srcCount"></span></button>
     <div class="dock-group media">
-      <button class="dk" data-sys="prev" type="button"><i class="ic ic-prev"></i></button>
-      <button class="dk dk-main" data-sys="playpause" type="button"><i class="ic ic-play" id="dockPlayIc"></i></button>
-      <button class="dk" data-sys="next" type="button"><i class="ic ic-next"></i></button>
+      <button class="dk" data-sys="prev" type="button" aria-label="上一首"><i class="ic ic-prev"></i></button>
+      <button class="dk dk-main" data-sys="playpause" type="button" aria-label="播放或暂停"><i class="ic ic-play" id="dockPlayIc"></i></button>
+      <button class="dk" data-sys="next" type="button" aria-label="下一首"><i class="ic ic-next"></i></button>
     </div>
     <div class="dock-group volume">
-      <button class="dk" data-sys="mute" type="button" id="muteBtn"><i class="ic ic-vol"></i></button>
+      <button class="dk" data-sys="mute" type="button" id="muteBtn" aria-label="静音切换"><i class="ic ic-vol"></i></button>
       <div class="vol-track" id="volTrack"><div class="vol-fill" id="volFill"></div><span class="vol-num" id="volNum">--</span></div>
     </div>
     <button class="dk dk-remote" data-tp="open" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span>遥控 Mac</span></button>
@@ -180,6 +180,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=19"></script>
+<script src="app.js?v=21"></script>
 </body>
 </html>
