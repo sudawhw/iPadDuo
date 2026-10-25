@@ -1437,3 +1437,263 @@ body.editing .tile.widget .wg { opacity: 0.55; }
 .tp.split.ch-s .cm-main .cbig, .tp.ch-s .cm-main .cbig { width: 96px; height: 96px; border-radius: 48px; margin-right: 10px; }
 .tp.split.ch-s .cm-main .cbig .ic, .tp.ch-s .cm-main .cbig .ic { width: 36px !important; height: 36px !important; background-size: 36px 36px !important; }
 .tp.split.ch-s .cs-music .cv-row .cbtn, .tp.ch-s .cs-music .cv-row .cbtn { min-height: 56px; font-size: 15px; }
+
+/* ======================================================================
+   统一设计变量、可读性与触控目标
+   ====================================================================== */
+:root {
+  --field: #23272e;
+  --control-text: var(--text);
+  --accent-ink: #062516;
+  --focus: #82eda6;
+}
+body.theme-light {
+  --field: #e7ebf0;
+  --control-text: #171b21;
+  --accent-ink: #062516;
+  --muted: #5d6877;
+}
+
+/* 不再让固定浅色文字落到浅色控件上；沉浸画面仍保持白色。 */
+.tp-ctx button, .pn-act, .pn-row button, .cbtn, .cv-label span,
+.sl-btn small, .dk-label, .pn-chips button { color: var(--control-text); }
+.field, .seg button, .chips button, .sheet-actions .pill, .field-row .pill {
+  background: var(--field); color: var(--text);
+}
+.seg button.on, .pill.primary, .dk-remote, .fb-row.sel, .tp-tool.on,
+.fb-acts .pill.primary, .dk-src span { color: var(--accent-ink); }
+.fb-row.sel b, body.theme-light .fb-row.sel b, body.theme-light .fb-row.sel { color: var(--accent-ink); }
+body.theme-light .tp.m-screen .cbtn, body.theme-light .tp-overlay .cbtn,
+body.theme-light .tp-rail .rbtn { color: #eef1f4; }
+body.theme-light .form-row .hint[style*="cfd5dc"] { color: var(--muted) !important; }
+
+.pill, .tab, .seg button, .chips button, .pn-chips button, .cm-chip,
+.cm-q-close, .pn-list-head button { min-height: 44px; }
+.pill { height: 44px; border-radius: 14px; }
+.tab { height: 44px; }
+.seg button, .chips button, .pn-chips button, .cm-chip { height: 44px; }
+.swatches button { width: 44px; height: 44px; }
+.pick-item { height: 52px; line-height: 52px; }
+.form-row > label { font-size: 14px; }
+.hint { font-size: 13px; }
+.mini-txt small, .cv-setup, .src-thumb i { font-size: 12px; }
+.bar-right .pill + .pill { margin-left: 6px; }
+.settings-section {
+  margin: 24px 2px 14px; padding-top: 18px; border-top: 1px solid var(--line);
+  color: var(--text); font-size: 17px; font-weight: 650;
+}
+.settings-section:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.tile:focus, .mini:focus, button:focus { outline: 2px solid var(--focus); outline-offset: 2px; }
+.tile:active, button:active { outline: none; }
+
+/* 小屏手机：独立的信息密度，而不是把 iPad 界面等比缩小。 */
+@media (max-width: 500px), (max-height: 430px) {
+  #app { padding: 0 12px; }
+  .stage { margin: 0 -12px; }
+  .page { padding: 6px 12px; }
+  .bar { height: 56px; }
+  .clock { min-width: 58px; }
+  .clock b { font-size: 23px; line-height: 28px; }
+  .clock small, .host { display: none; }
+  .bar-right { min-width: 0; }
+  .bar-right .pill { height: 40px; min-height: 40px; padding: 0 10px; font-size: 13px; }
+  .bar-right .pill + .pill { margin-left: 4px; }
+  .conn { width: 7px; height: 7px; margin-right: 5px; }
+  .tabs { padding: 0 4px; }
+  .tab { height: 40px; min-height: 40px; padding: 0 12px; margin: 0; font-size: 14px; }
+  .edit-bar { height: 54px; padding: 0 5px; margin-bottom: 2px; border-radius: 15px; }
+  .edit-hint { display: none; }
+  .edit-bar .pill { height: 42px; min-height: 42px; margin-left: 5px; padding: 0 12px; font-size: 13px; }
+  .grid { grid-gap: 10px; }
+  .dots { height: 14px; }
+  .tile { border-radius: 18px; }
+  .txt { left: 12px; right: 12px; bottom: 10px; }
+  .txt b { font-size: 14px; line-height: 18px; }
+  .txt small { font-size: 12px; }
+  .s-w .txt b, .s-l .txt b { font-size: 18px; line-height: 22px; }
+  .s-w .txt { right: 42%; }
+  .compact .txt b { font-size: 12px; line-height: 15px; }
+
+  .dock { height: 64px; margin-bottom: 8px; padding: 0 6px; border-radius: 20px; }
+  .mini { width: auto; min-width: 0; height: 46px; margin-right: 4px; padding-right: 6px; border-radius: 14px; }
+  .mini-art { width: 46px; height: 46px; margin-right: 8px; border-radius: 12px; }
+  .mini-txt b { font-size: 13px; line-height: 16px; }
+  .mini-txt small { font-size: 11px; line-height: 14px; }
+  .dk { width: 46px; height: 46px; margin: 0 2px; border-radius: 14px; }
+  .dk-main { width: 50px; }
+  .dk-remote { height: 46px; padding: 0 12px; margin-left: 4px; }
+  .dk-remote svg { width: 20px; height: 20px; }
+  .dk-src { width: 46px; margin-right: 4px; }
+  body.no-dock .dots { margin-bottom: 8px; }
+
+  .sheet-wrap, body.standalone .sheet-wrap { padding: 0; }
+  .sheet { width: 100%; max-width: none; max-height: none; border-radius: 0; }
+  .sheet-head { height: 62px; padding: 0 10px; }
+  .sheet-body { padding: 14px 16px 28px; }
+  .form-2 { display: block; }
+  .form-2 > .form-row + .form-row { margin-left: 0; }
+  .preview-row { --rh: 112px; }
+  .preview-row .tile { width: 112px; height: 112px; }
+  .preview-row .tile.s-w, .preview-row .tile.s-l { width: 234px; }
+  .preview-row .tile.s-t, .preview-row .tile.s-l { height: 234px; }
+  .field-row .pill { padding: 0 11px; }
+  .toast { bottom: 84px; max-width: calc(100% - 32px); width: auto; font-size: 14px; line-height: 1.45; }
+
+  .src-sheet { left: 8px; right: 8px; bottom: 80px; width: auto; max-width: none; max-height: 72%; border-radius: 22px; }
+  .src-head { padding: 12px 12px 6px 18px; }
+  .src-list { padding: 6px 8px 12px; }
+  .src-card { padding: 8px; border-radius: 16px; }
+  .src-thumb { width: 112px; height: 64px; }
+  .src-card.music .src-thumb { width: 64px; height: 64px; }
+  .src-meta { padding: 0 8px 0 10px; }
+  .src-meta b { font-size: 14px; }
+  .src-meta small { font-size: 12px; }
+  .src-acts { -webkit-flex-direction: column; flex-direction: column; }
+  .src-acts .pill { height: 38px; min-height: 38px; min-width: 52px; margin: 2px 0 2px 4px; padding: 0 10px; font-size: 13px; }
+
+  .np-top, body.standalone .np-top { top: 0; height: 60px; padding: 0 12px; }
+  .np-top .back-btn { height: 44px; padding: 0 12px; font-size: 15px; }
+  .np-clock { font-size: 18px; }
+  .np-body, body.standalone .np-body { left: 16px; right: 16px; top: 64px; bottom: 16px; }
+  .np-side { margin-bottom: 18px; }
+  .np-art { width: 112px; height: 112px; margin-right: 14px; border-radius: 14px; }
+  .np-meta { margin-bottom: 10px; }
+  .np-meta b { font-size: 18px; line-height: 23px; }
+  .np-meta small { font-size: 13px; }
+  .np-ctrl { margin-top: 10px; }
+  .np-ctrl .dk { width: 46px; height: 46px; border-radius: 23px; margin: 0 4px; }
+  .np-ctrl .dk-main { width: 52px; height: 52px; border-radius: 26px; margin-top: -3px; }
+  .np-lines p { font-size: 22px; margin-bottom: 18px; }
+  .np-lines p small { font-size: 15px; }
+  .np.no-lyrics .np-art { width: 230px; height: 230px; }
+  .np.no-lyrics .np-info { width: 100%; max-width: 300px; }
+  .np.focus .np-lines { padding: 0 4px; }
+  .np.focus .np-lines p { font-size: 29px; }
+
+  .tp { padding: 0 10px 10px; }
+  .tp-top { height: 62px; }
+  .tp-top .back-btn { height: 44px; padding: 0 12px; font-size: 15px; }
+  .tp-size { display: none; }
+  .tp-top .tp-mode { margin-left: 6px; padding: 3px; }
+  .tp-mode button { height: 40px; min-height: 40px; padding: 0 13px; font-size: 14px; }
+  .tp-app, .tp-rtt { display: none; }
+  .tp-pad { border-radius: 18px; }
+  .tp-hint { display: none !important; }
+  .tp-tools { left: 8px; bottom: 34px; }
+  .tp-tool { height: 44px; margin-right: 6px; padding: 0 11px; border-radius: 22px; font-size: 13px; }
+  .tp-tool b { font-size: 16px; }
+  .tp-fps { right: 9px !important; top: 8px !important; padding: 3px 5px; border-radius: 6px; background: rgba(0,0,0,.55); }
+  .tp-screen-msg.on { font-size: 14px; }
+  .tp-zoom { right: 8px; bottom: 34px; height: 44px; padding: 0 12px; }
+
+  .cg-grid { grid-template-columns: repeat(2, 1fr) !important; grid-gap: 10px; }
+  .cbtn { min-height: 70px; border-radius: 17px; font-size: 16px; }
+  .cg-grid .cbtn b { font-size: 17px; }
+  .cg-grid .cbtn small { font-size: 12px; }
+  .cv-title b { font-size: 18px; }
+  .cv-scrub, .tp.ch-s .cv-scrub { height: 70px; border-radius: 18px; }
+  .cv-main { min-height: 118px; }
+  .cv-main .cbtn:not(.cbig), .tp.cw-s .cv-main .cbtn:not(.cbig) { width: 25%; height: 86px; margin: 0 4%; }
+  .cbig, .tp.cw-s .cbig { width: 100px; height: 100px; border-radius: 50px; }
+  .cv-row { -webkit-flex-wrap: wrap; flex-wrap: wrap; }
+  .cv-row .cbtn { -webkit-flex: 1 0 28%; flex: 1 0 28%; min-height: 54px; margin-bottom: 8px; font-size: 14px; }
+  .ov-row { -webkit-flex-wrap: wrap; flex-wrap: wrap; }
+  .ov-row .cbtn { -webkit-flex: 1 0 28%; flex: 1 0 28%; }
+  .tp.m-screen.v-watch .tp-overlay { left: 8px; right: 8px; bottom: 8px; padding: 8px; border-radius: 18px; }
+  .tp.m-screen.v-read .tp-rail { right: 12px; top: 72px; bottom: 12px; width: 92px; }
+  .tp.m-screen.v-read .tp-pad { margin-right: 98px; }
+  .rbtn { min-height: 52px; font-size: 14px; border-radius: 15px; }
+  .tp.m-screen.v-browse .tp-rail { -webkit-flex-wrap: wrap; flex-wrap: wrap; }
+  .tp.m-screen.v-browse .tp-rail .rbtn { -webkit-flex: 1 0 28%; flex: 1 0 28%; margin-bottom: 6px; }
+
+  .cs-music, .tp.ch-s .cs-music { -webkit-flex-direction: column; flex-direction: column; overflow-y: auto; }
+  .cm-art, .tp.ch-s .cm-art { width: 150px; height: 150px; margin: 0 auto 14px; }
+  .cm-meta b, .tp.ch-s .cm-meta b { font-size: 20px; }
+  .cm-meta small { font-size: 14px; }
+  .cm-main, .tp.ch-s .cm-main { -webkit-justify-content: center; justify-content: center; margin: 14px 0; }
+  .cm-main .cbtn:not(.cbig), .tp.ch-s .cm-main .cbtn:not(.cbig) { width: 68px; height: 68px; margin: 0 8px; }
+  .cm-main .cbig, .tp.ch-s .cm-main .cbig { width: 88px; height: 88px; border-radius: 44px; }
+  .cm-modes { margin-top: 8px; }
+  .tp.cw-l:not(.split) .cm-queue { width: 100%; margin-left: 0; }
+
+  .pn-head { margin-bottom: 10px; }
+  .pn-pop { min-width: 0; max-width: none; height: 48px; padding: 0 12px; -webkit-flex: 1; flex: 1; }
+  .pn-grid { grid-template-columns: repeat(3, 1fr); grid-auto-rows: 72px; grid-gap: 8px; }
+  .pn-act { font-size: 12px; border-radius: 15px; }
+  .pn-act svg { width: 22px; height: 22px; margin-bottom: 5px; }
+  .pn-compose textarea { font-size: 16px; padding: 13px 14px; }
+  .pn-row { -webkit-flex-wrap: wrap; flex-wrap: wrap; }
+  .pn-row button { -webkit-flex: 1 0 28%; flex: 1 0 28%; height: 48px; margin-bottom: 6px; }
+  .pn-row .pn-voice { -webkit-flex: 1 0 60%; flex: 1 0 60%; }
+  .bt-nav { -webkit-flex-wrap: wrap; flex-wrap: wrap; }
+  .bt-nav .cbtn { -webkit-flex: 1 0 28%; flex: 1 0 28%; min-height: 52px; margin-bottom: 8px; font-size: 14px; }
+  .bt-main, .bt-mark { min-height: 56px; padding: 9px 12px; }
+  .bt-main b, .bt-mark b { font-size: 14px; }
+
+  .fb-bar { height: 62px; padding: 0 8px; }
+  .fb-bar .back-btn { height: 44px; padding: 0 12px; font-size: 15px; }
+  .fb-path { padding: 0 8px; font-size: 13px; }
+  .fb-bar .pill { height: 44px; padding: 0 11px; font-size: 13px; }
+  .fb-cols { padding: 0 6px; }
+  .fb-col, .fb-prev { width: 86%; min-width: 0; }
+  .fb-prev { width: 92%; }
+  .fb-row { height: 52px; font-size: 15px; }
+  .fb-acts .pill { height: 54px; }
+  .stage-tab { width: 44px; height: 120px; margin-top: -60px; }
+}
+
+/* 手机横屏高度有限：压缩顶部与底部，内容区保持滚动可达。 */
+@media (max-height: 430px) {
+  .bar { height: 48px; }
+  .dock { height: 56px; }
+  .mini, .mini-art, .dk, .dk-remote { height: 42px; }
+  .mini-art { width: 42px; }
+  .dk { width: 42px; }
+  .dk-main { width: 46px; }
+  .dk-remote { width: 46px; padding: 0; margin-left: 4px; }
+  .dk-remote span { display: none; }
+  .dk-remote svg { margin-right: 0; }
+  .np-body, body.standalone .np-body { top: 56px; }
+  .np-side { margin-bottom: 10px; }
+  .np-art { width: 96px; height: 96px; }
+  .tp-top { height: 52px; }
+  .cs-music, .tp.ch-s .cs-music { -webkit-flex-direction: row; flex-direction: row; }
+  .cm-art, .tp.ch-s .cm-art { width: 118px; height: 118px; margin: 0 18px 0 0; }
+  .cm-main, .tp.ch-s .cm-main { margin: 8px 0; }
+  .cm-main .cbig, .tp.ch-s .cm-main .cbig { width: 72px; height: 72px; border-radius: 36px; }
+  .cm-main .cbtn:not(.cbig), .tp.ch-s .cm-main .cbtn:not(.cbig) { width: 56px; height: 56px; margin: 0 5px; }
+  .cv-main { min-height: 92px; }
+  .cv-main .cbtn:not(.cbig), .tp.cw-s .cv-main .cbtn:not(.cbig) { height: 70px; }
+  .cbig, .tp.cw-s .cbig { width: 80px; height: 80px; border-radius: 40px; }
+}
+
+/* 文件加载失败留在当前栏内，可直接重试，不丢失已展开的路径。 */
+.fb-state { margin: auto 14px; text-align: center; color: var(--muted); font-size: 14px; line-height: 1.6; }
+.fb-state b, .fb-state span { display: block; }
+.fb-state b { margin-bottom: 5px; color: var(--text); font-size: 16px; }
+.fb-state .pill { margin-top: 16px; }
+.fb-row:focus { outline: 2px solid var(--focus); outline-offset: -2px; }
+.edit-bar { scrollbar-width: none; }
+.edit-bar::-webkit-scrollbar { display: none; }
+
+@media (max-width: 500px), (max-height: 430px) {
+  .bar-right .pill, .tab { height: 44px; min-height: 44px; }
+  .edit-bar .pill { height: 44px; min-height: 44px; }
+  .fb-bar .pill { max-width: 132px; padding: 0 10px; white-space: normal; line-height: 1.25; }
+  .settings-section { margin-top: 20px; padding-top: 15px; }
+}
+
+.ctl-loading { margin: auto; font-size: 16px; color: var(--muted); }
+
+/* 窄主页（分屏半边）：「设置」只留齿轮图标，给页签留出空间；页签两端渐隐，提示还能左右滑 */
+body.app-narrow #settingsBtn { width: 44px; padding: 0; font-size: 0; }
+body.app-narrow #settingsBtn:before { content: '⚙'; font-size: 20px; line-height: 44px; }
+body.app-narrow .tabs { -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%); mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%); }
+body.app-narrow .clock { min-width: 0; margin-right: 6px; }
+
+/* 分段按钮至少 44pt 宽（苹果的最小触控尺寸） */
+.seg button { min-width: 44px; }
+
+/* 小磁贴里的大数字不换行（如「601.4 GB」） */
+.wg-big { white-space: nowrap; }
+.s-s .wg-big.sm { font-size: 22px; }

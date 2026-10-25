@@ -883,6 +883,7 @@ const MUSIC_MENUS = {
   },
 };
 
+const musicMenus = new Map();
 async function musicInfo(bundle) {
   if (bundle === 'com.apple.Music') {
     const out = await osa('if application "Music" is running then tell application "Music" to return (favorited of current track) as text').catch(() => '');
@@ -890,22 +891,38 @@ async function musicInfo(bundle) {
   }
   const m = MUSIC_MENUS[bundle];
   if (!m || !helperReady) return { liked: null, modes: [] };
-  const menus = await run(HELPER_BIN, ['menus', bundle]).catch(() => '');
+  // 菜单读取约 1–4 秒：先用缓存（最多 60 秒内的）立即返回，过期 2.5 秒就在后台刷新；只有第一次需要等待
+  const cached = musicMenus.get(bundle);
+  const fetchMenus = () => run(HELPER_BIN, ['menus', bundle]).catch(() => '').then((t) => { musicMenus.set(bundle, { at: Date.now(), text: t, pending: false }); return t; });
+  let menus;
+  if (cached && Date.now() - cached.at < 60000) {
+    menus = cached.text;
+    if (Date.now() - cached.at > 2500 && !cached.pending) { cached.pending = true; fetchMenus(); }
+  } else menus = await fetchMenus();
   const has = (t) => menus.split('\n').some((l) => l.replace(/^\(禁用\) /, '').replace(/\s/g, '') === t.replace(/\s/g, ''));
   let liked = null;
   if (m.like.some((p) => /取消喜欢|Unlike/.test(p) && has(p))) liked = true;
   else if (m.like.some((p) => !/取消喜欢|Unlike/.test(p) && has(p))) liked = false;
   const info = { liked, modes: Object.keys(m.modes).filter((k) => m.modes[k].some(has)) };
-  // 待播列表（只读辅助功能文字；QQ 音乐的主窗口需要开着）
-  if (bundle === 'com.tencent.QQMusicMac') {
-    const texts = await run(HELPER_BIN, ['texts', bundle], { timeout: 4000 }).catch(() => '');
-    info.queue = require('./nowplaying').parseQQQueue(texts);
-  }
+  // 待播列表：QQ 音乐的辅助功能树很大（含 AI 对话区），读一次可能要十几秒，所以后台刷新、这里只拿缓存，不拖慢控件
+  if (bundle === 'com.tencent.QQMusicMac') info.queue = qqQueueCached();
   return info;
+}
+
+const qqQueue = { at: 0, value: null, pending: false };
+function qqQueueCached() {
+  if (!qqQueue.pending && Date.now() - qqQueue.at > 8000) {
+    qqQueue.pending = true;
+    run(HELPER_BIN, ['texts', 'com.tencent.QQMusicMac'], { timeout: 20000 })
+      .then((t) => { const q = require('./nowplaying').parseQQQueue(t); if (q || !qqQueue.value) qqQueue.value = q; }, () => {})
+      .then(() => { qqQueue.at = Date.now(); qqQueue.pending = false; });
+  }
+  return qqQueue.value;
 }
 
 async function musicAction(bundle, action, value) {
   await requireAccessibility();
+  musicMenus.delete(bundle); qqQueue.at = 0;
   if (bundle === 'com.apple.Music') {
     if (action === 'like') return osa('tell application "Music" to set favorited of current track to not (favorited of current track)');
     throw new Error('Apple Music 暂不支持这个操作');
@@ -1014,9 +1031,11 @@ const server = http.createServer(async (req, res) => {
   const p = url.pathname;
 
   if (!p.startsWith('/api/')) {
-    const rel = p === '/' ? 'index.html' : decodeURIComponent(p).replace(/^\/+/, '');
-    const file = path.normalize(path.join(PUBLIC, rel));
-    if (!file.startsWith(PUBLIC)) return send(res, 403, 'Forbidden');
+    let rel;
+    try { rel = p === '/' ? 'index.html' : decodeURIComponent(p).replace(/^\/+/, ''); } catch (e) { return send(res, 400, 'Bad path'); }
+    if (rel.includes('\0')) return send(res, 400, 'Bad path');
+    const file = path.resolve(PUBLIC, rel);
+    if (file !== PUBLIC && !file.startsWith(PUBLIC + path.sep)) return send(res, 403, 'Forbidden');
     return serveFile(res, file, null, null, req);
   }
 
@@ -1036,8 +1055,8 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/config' && req.method === 'GET') return send(res, 200, configWithTints());
     if (p === '/api/config' && req.method === 'POST') {
       const c = validateConfig(await readBody(req));
-      config = c;
       saveConfig(c);
+      config = c;
       nowPlaying.sync();
       return send(res, 200, { ok: true });
     }
@@ -1464,6 +1483,8 @@ server.on('upgrade', (req, socket, head) => {
 
 // 正常退出时结束捕获并释放该服务按住的输入；LaunchAgent 会按原有配置重启。
 function shutdown() {
+  nowPlaying.close();
+  rtc.close();
   input.close();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 1000).unref();
@@ -1473,6 +1494,11 @@ process.once('SIGINT', shutdown);
 
 loadConfig();
 ensureHelper();
+// 预热：启动后在后台读一次正在运行的音乐应用的菜单与待播列表，第一次打开音乐控件不用等
+setTimeout(() => {
+  if (!helperReady) return;
+  Object.keys(MUSIC_MENUS).forEach((b) => run(HELPER_BIN, ['running', b]).then((o) => { if (o.trim() === 'yes') musicInfo(b).catch(() => {}); }, () => {}));
+}, 4000);
 nowPlaying.sync();
 server.on('error', (e) => {
   if (e.code === 'EADDRINUSE') console.error('端口 ' + PORT + ' 已被占用，可用 PORT=xxxx node server.js 换一个端口');

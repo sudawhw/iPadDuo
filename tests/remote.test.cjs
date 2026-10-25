@@ -142,6 +142,15 @@ test('HTTP capture after streaming returns real image bytes and a separate frame
     const f = await pending; assert.equal(f.jpg.toString(),'HTTP-JPEG'); assert(f.meta.frameId);
   } finally {a.close();}
 });
+test('capture output overflow rejects the pending frame instead of growing memory', async () => {
+  const a = backend(); try {
+    const pending = a.api.frame(768,'client-overflow');
+    const cap = a.children.find(c=>c.args[0]==='capture'); assert(cap);
+    cap.stdout.emit('data',Buffer.alloc(1024*1024+1,120));
+    const result = await pending;
+    assert.equal(result.error,'overflow');
+  } finally {a.close();}
+});
 test('input sequence discards delayed movement after release', () => {
   const a = backend(); try {
     a.api.handle({t:'d',seq:1},'client-order-a'); a.api.handle({t:'release',seq:3},'client-order-a');
