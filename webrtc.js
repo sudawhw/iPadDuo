@@ -19,7 +19,7 @@ function createWebRTC(opts) {
   const log = opts.log || (() => {});
   const peers = new Map(); // socket → peer
   let child = null, buf = Buffer.alloc(0), header = null, params = null, meta = null, restartTimer = null, stopTimer = null, watchdog = null;
-  let streamFails = 0; // 连续「采集流中断且一帧都没出」的次数：系统的连续采集坏掉时尽快让 iPad 改用截图兼容模式
+  let streamFails = 0, spawnAt = 0; // 连续「采集流中断且一帧都没出」的次数：系统的连续采集坏掉时尽快让 iPad 改用截图兼容模式
   const now = opts.now || Date.now;
 
   // 看门狗：连接已建立却一直没收到画面（静止画面下新观看者拿不到关键帧，或常驻采集进程失效）时，
@@ -74,6 +74,7 @@ function createWebRTC(opts) {
     if (want.virtual) args.push('virtual', want.virtual);
     let c;
     try { c = spawn(helperBin, args, { stdio: ['pipe', 'pipe', 'pipe'] }); } catch (e) { return broadcast({ t: 'rtc-error', err: 'encoder-start' }); }
+    spawnAt = now();
     child = c; buf = Buffer.alloc(0); header = null; meta = null;
     let finished = false;
     const finish = (code, sig, error) => {
@@ -108,10 +109,16 @@ function createWebRTC(opts) {
         buf = buf.subarray(i + 1);
         if (!h.ok) {
           // 权限被拒要告诉 iPad；其它采集中断由 helper 自动重建，不让 iPad 退回 JPEG
-          if (captureError(h.err) === 'screen-permission') { broadcast({ t: 'rtc-error', err: 'screen-permission' }); continue; }
+          if (captureError(h.err) === 'screen-permission') {
+            if (h.err !== 'screen-permission' && now() - spawnAt > 3000) noteStreamFailure(); // 预检通过却报 TCC：采集服务异常，计入自愈
+            broadcast({ t: 'rtc-error', err: 'screen-permission' }); continue;
+          }
           log('  h264 采集：' + (h.err || '未知错误'));
-          noteStreamFailure();
-          if (++streamFails >= 2) { streamFails = 0; broadcast({ t: 'rtc-error', err: 'stream-unavailable' }); }
+          // 刚启动的 3 秒内的「中断」多为启动抖动，随后会正常出帧：不计入
+          if (now() - spawnAt > 3000) {
+            noteStreamFailure();
+            if (++streamFails >= 2) { streamFails = 0; broadcast({ t: 'rtc-error', err: 'stream-unavailable' }); }
+          }
           continue;
         }
         if (h.kind === 'health' || h.kind === 'virtual') continue;
@@ -147,7 +154,9 @@ function createWebRTC(opts) {
   function start(socket, clientId, m, send) {
     if (!ndc) return send({ t: 'rtc-error', err: 'unavailable' });
     if (streamBroken()) return send({ t: 'rtc-error', err: 'stream-unavailable' }); // 系统连续采集暂不可用：直接用截图兼容画面
+    const t0 = Date.now();
     stop(socket);
+    if (Date.now() - t0 > 200) log('  rtc 关闭旧连接用了 ' + (Date.now() - t0) + 'ms');
     const ssrc = crypto.randomBytes(4).readUInt32BE(0) >>> 1;
     const pc = new ndc.PeerConnection('ipadduo-' + clientId.slice(0, 16), { iceServers: [], disableAutoNegotiation: false });
     const video = new ndc.Video('video', 'SendOnly');
@@ -187,10 +196,12 @@ function createWebRTC(opts) {
       const d = pc.localDescription();
       if (!d) return;
       peer.offered = true;
+      if (Date.now() - t0 > 1000) log('  rtc offer 用了 ' + (Date.now() - t0) + 'ms');
       send({ t: 'rtc-offer', sdp: d.sdp });
     };
     pc.onGatheringStateChange((s) => { if (s === 'complete') sendOffer(); });
     setTimeout(sendOffer, 1500); // 收集候选太慢时先发已有的
+    const t1 = Date.now(); setImmediate(() => { if (Date.now() - t1 > 300) log('  rtc 启动后事件循环阻塞 ' + (Date.now() - t1) + 'ms'); });
     pc.onStateChange((s) => {
       send({ t: 'rtc-state', state: s });
       if (s === 'failed' || s === 'closed') stop(socket);

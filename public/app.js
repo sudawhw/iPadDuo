@@ -1001,6 +1001,7 @@
     tp.ws = ws;
     ws.onopen = function () {
       if (tp.ws !== ws) return;
+      dbg('ws open');
       tp.ready = true; tp.lastPong = Date.now(); setClass($('tp'), 'live', true); tpPing(); tpFlush();
       if (scr.on && !document.hidden) scrSubscribe();
     };
@@ -1016,9 +1017,9 @@
         if (scr.on && scr.lastDisplayAt && Date.now() - scr.lastDisplayAt > 2500) $('tpFps').textContent = '静止画面 · 已连接';
       }
       else if (m.t === 'screenerr') scrFallback(m.err);
-      else if (m.t === 'rtc-offer') rtcOffer(m.sdp);
+      else if (m.t === 'rtc-offer') { dbg('rtc-offer'); rtcOffer(m.sdp); }
       else if (m.t === 'rtc-meta') rtcMeta(m.meta);
-      else if (m.t === 'rtc-error') rtcFail(m.err);
+      else if (m.t === 'rtc-error') { dbg('rtc-error ' + m.err); rtcFail(m.err); }
       else if (m.t === 'rtc-moved') toast(m.done ? (m.app ? m.app + ' 已移动' : '窗口已移动') : '没有可移动的窗口：先在 Mac 上点一下要移动的窗口', !m.done);
       else if (m.t === 'rtc-state' && (m.state === 'failed' || m.state === 'closed') && scr.rtc) rtcFail('rtc-' + m.state);
       else if (m.t === 'inputerr') {
@@ -2010,6 +2011,7 @@
   }
   function scrFallback(error) {
     if (!scr.on) return;
+    dbg('fallback ' + error);
     if (scr.streaming) tpSend({ t: 'screen', on: false });
     scr.streaming = false; clearTimeout(scr.watch); clearTimeout(scr.retry); clearTimeout(scr.timer); scrAbortLoad();
     scrMsg(error === 'screen-permission' ? '需要屏幕录制权限：请在 Mac 的 iPadDuo 设置向导中授权' : '画面恢复中，正在使用兼容连接…');
@@ -2027,6 +2029,7 @@
     var cycle = scr.lastArrival ? arrival - scr.lastArrival : 0; scr.lastArrival = arrival;
     scr.loader = image; scr.pendingURL = url;
     image.onerror = function () {
+      dbg('image decode error ' + bytes);
       if (token !== scr.loadToken) return;
       URLs.revokeObjectURL(url); scr.pendingURL = null; scr.loader = null; scrMsg('图像加载失败，正在重试…'); done(false);
     };
@@ -2035,6 +2038,7 @@
       var old = scr.meta, changed = old && (old.wid !== meta.wid || old.x !== meta.x || old.y !== meta.y || old.w !== meta.w || old.h !== meta.h);
       if (changed) { tpCancel(); scrZoom(1, 0, 0); }
       var previousURL = scr.url;
+      if (!scr.lastDisplayAt) dbg('first jpeg frame ' + image.width + 'x' + image.height + ' streaming=' + scr.streaming);
       $('tpScreen').src = url; scr.meta = meta; scr.url = url; scr.pendingURL = null; scr.loader = null;
       scr.healthAt = Date.now(); scrMsg('');
       if (meta.app) $('tpApp').textContent = meta.app;
@@ -2068,7 +2072,14 @@
       else tpSend({ t: 'fack', frameId: meta.frameId, subscription: scr.subscription });
     });
   }
-  function scrMsg(text) { $('tpScreenMsg').textContent = text || ''; setClass($('tpScreenMsg'), 'on', !!text); }
+  function scrMsg(text) { $('tpScreenMsg').textContent = text || ''; setClass($('tpScreenMsg'), 'on', !!text); if (text) dbg('msg ' + text); }
+  // 诊断：地址带 ?debug=1 时，把副屏的关键步骤发到 Mac 的服务日志（排查 iPad 上看不到的问题）
+  var DEBUG = /[?&]debug=1/.test(location.search), dbgT0 = Date.now();
+  function dbg(m) {
+    if (!DEBUG) return;
+    try { var x = new XMLHttpRequest(); x.open('POST', '/api/clientlog', true); x.setRequestHeader('X-Deck', '1'); x.setRequestHeader('Content-Type', 'application/json'); x.send(JSON.stringify({ m: ((Date.now() - dbgT0) / 1000).toFixed(1) + 's ' + String(m).slice(0, 300) })); } catch (e) { /* 忽略 */ }
+  }
+  if (DEBUG) { dbg('ua ' + navigator.userAgent + ' rtc=' + !!window.RTCPeerConnection); window.addEventListener('error', function (e) { dbg('error ' + e.message + ' @' + e.lineno); }); }
   function scrNext() {
     clearTimeout(scr.timer);
     if (!scr.on || !tp.visible || scr.streaming || document.hidden || tp.size === 'min' || scr.xhr || scr.loader) return;
@@ -2082,6 +2093,7 @@
       if (scr.xhr === x) scr.xhr = null;
       if (!scr.on || generation !== scr.generation || scr.streaming) return;
       if (x.status !== 200) {
+        dbg('http frame ' + x.status);
         // 显示服务端给出的具体原因（例如屏幕录制权限被关掉），而不是笼统的「重试」
         var reason = '';
         if (x.status === 409 && window.FileReader) { var fr = new FileReader(); fr.onload = function () { try { reason = JSON.parse(fr.result).error; } catch (e) { /* ignore */ } if (reason) scrMsg(reason); }; fr.readAsText(x.response); }
@@ -2140,6 +2152,9 @@
     if (r && r.pc) { try { r.pc.close(); } catch (e) { /* 已关闭 */ } }
   }
   function rtcFail(err) {
+    dbg('rtcFail ' + err);
+    // 硬件视频已经在出画面：服务端广播的采集错误多半来自其它编码进程或瞬时抖动，只有连接真正失败才放弃
+    if (scr.rtc && scr.rtc.shown && !/^(ice-failed|rtc-failed|rtc-closed)$/.test(err)) { dbg('ignore ' + err + ' (video is playing)'); return; }
     if (!scr.rtc && err !== 'screen-permission') return;
     if (scr.rtc) tpSend({ t: 'rtc', on: false });
     rtcTeardown();
@@ -2158,32 +2173,35 @@
     session.pc = pc;
     var v = $('tpVideo');
     pc.ontrack = function (e) {
+      dbg('ontrack ' + (e.track && e.track.kind));
       if (scr.rtc !== session) return;
       v.srcObject = e.streams && e.streams[0] ? e.streams[0] : new MediaStream([e.track]);
       var p = v.play(); if (p && p.catch) p.catch(function () { /* muted 自动播放，失败时等首帧事件 */ });
     };
     var shown = function () {
       if (scr.rtc !== session || session.shown || !v.videoWidth) return;
-      session.shown = true; clearTimeout(scr.watch);
+      session.shown = true; clearTimeout(scr.watch); dbg('rtc shown ' + v.videoWidth + 'x' + v.videoHeight);
       setClass($('tp'), 'rtc-live', true); scrMsg('');
       rtcStatsLoop(session);
     };
-    v.onloadeddata = v.onplaying = shown;
+    v.onloadeddata = v.onplaying = function () { dbg("video " + (v.videoWidth || 0) + "x" + (v.videoHeight || 0)); shown(); };
     v.onresize = function () { if (scr.rtc === session && scr.meta && v.videoWidth) { scr.meta.pw = v.videoWidth; scr.meta.ph = v.videoHeight; } };
     pc.oniceconnectionstatechange = function () {
+      dbg('ice ' + pc.iceConnectionState);
       if (scr.rtc === session && (pc.iceConnectionState === 'failed')) rtcFail('ice-failed');
     };
     var answered = false;
     var sendAnswer = function () {
       if (answered || scr.rtc !== session || !pc.localDescription) return;
       answered = true; tpSend({ t: 'rtc-answer', sdp: pc.localDescription.sdp });
+      dbg('answer sent, candidates=' + (pc.localDescription.sdp.match(/a=candidate/g) || []).length + ' ' + ((pc.localDescription.sdp.match(/a=candidate[^\r\n]*/g) || []).map(function (c) { return c.split(' ').slice(4, 8).join(' '); }).join(' | ')));
     };
     // 服务端不接收逐条候选：等本地候选收集完（局域网通常 <200ms），最多 1 秒
     pc.onicecandidate = function (e) { if (!e.candidate) sendAnswer(); };
     pc.setRemoteDescription({ type: 'offer', sdp: sdp }).then(function () { return pc.createAnswer(); })
       .then(function (a) { return pc.setLocalDescription(a); })
       .then(function () { setTimeout(sendAnswer, 1000); })
-      .catch(function () { rtcFail('rtc-sdp'); });
+      .catch(function (e) { dbg('sdp error ' + (e && e.message)); rtcFail('rtc-sdp'); });
   }
   function rtcMeta(meta) {
     if (!scr.rtc || !meta || !meta.frameId) return;
