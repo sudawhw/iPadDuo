@@ -1321,3 +1321,47 @@ body.app-tiny .tabs { max-width: 46%; }
 .tier-full .tp.split { -webkit-transform: translate3d(24px, 0, 0); transform: translate3d(24px, 0, 0); }
 .tier-full .tp.split.shown { -webkit-transform: none; transform: none; }
 .tier-lite .fb { -webkit-transition: opacity 0.18s ease; transition: opacity 0.18s ease; }
+
+/* ---------- 音乐：播放模式小按钮 + 待播列表 ---------- */
+.cm-modes { display: -webkit-flex; display: flex; -webkit-flex-wrap: wrap; flex-wrap: wrap; margin-top: 14px; }
+.cm-modes:empty { display: none; }
+.cm-chip { height: 40px; padding: 0 16px; margin: 0 8px 8px 0; border-radius: 20px; background: rgba(var(--fg), 0.08); color: var(--text); font-size: 14px; }
+.cm-chip:active { background: rgba(var(--fg), 0.18); }
+.cm-chip.is-ok { background: rgba(61, 220, 132, 0.3); }
+.cm-q-open { box-shadow: inset 0 0 0 1px rgba(var(--fg), 0.18); }
+.cs-music { position: relative; }
+.cm-queue { display: none; -webkit-flex-direction: column; flex-direction: column; min-height: 0; }
+.cm-q-h { -webkit-flex: none; flex: none; display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; padding: 4px 4px 10px 6px; }
+.cm-q-h b { font-size: 17px; }
+.cm-q-h small { margin-left: 10px; font-size: 13px; color: var(--muted); }
+.cm-q-close { margin-left: auto; height: 40px; padding: 0 18px; border-radius: 20px; }
+.cm-q-list { -webkit-flex: 1; flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; border-radius: 18px; background: rgba(var(--fg), 0.05); padding: 6px; }
+.cm-q-item { display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; width: 100%; height: 50px; padding: 0 12px; border-radius: 12px; text-align: left; color: var(--text); font-size: 15px; }
+.cm-q-item i { -webkit-flex: none; flex: none; width: 30px; font-style: normal; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.cm-q-item span { -webkit-flex: 1; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cm-q-item.now { background: rgba(61, 220, 132, 0.16); }
+.cm-q-item.now i { color: var(--accent); }
+.cm-q-item:active { background: rgba(var(--fg), 0.12); }
+.cm-q-empty { padding: 24px 12px; text-align: center; font-size: 14px; color: var(--muted); line-height: 1.6; }
+/* 宽屏全屏：封面 | 控制 | 待播列表 三栏 */
+.tp.cw-l:not(.split) .cm-queue { display: -webkit-flex; display: flex; -webkit-flex: none; flex: none; width: 300px; -webkit-align-self: stretch; align-self: stretch; margin-left: 28px; }
+.tp.cw-l:not(.split) .cm-q-open, .tp.cw-l:not(.split) .cm-q-close { display: none; }
+.tp.cw-l:not(.split) .cm-art { width: 260px; height: 260px; margin-right: 32px; }
+/* 其余尺寸：待播列表盖在音乐控件上（从下方滑入） */
+.tp:not(.cw-l) .cm-queue.open, .tp.split .cm-queue.open { display: -webkit-flex; display: flex; position: absolute; left: 0; top: 0; right: 0; bottom: 0; z-index: 3; padding: 4px; border-radius: 22px; background: var(--bg); -webkit-animation: cmq 0.24s ease; animation: cmq 0.24s ease; }
+@-webkit-keyframes cmq { from { opacity: 0; -webkit-transform: translate3d(0, 24px, 0); } to { opacity: 1; -webkit-transform: none; } }
+@keyframes cmq { from { opacity: 0; transform: translate3d(0, 24px, 0); } to { opacity: 1; transform: none; } }
+.tier-lite .cm-queue.open { -webkit-animation: none; animation: none; }
+
+/* 大播放键在窄行里不被压扁 */
+.cbig { -webkit-flex: none; flex: none; }
+/* 分屏且高度不足（竖屏分屏、横屏小屏）：封面放左侧、控件放右侧，一屏放下不溢出 */
+.tp.split.ch-s .cs-music, .tp.ch-s .cs-music { -webkit-flex: 1; flex: 1; min-height: 0; -webkit-flex-direction: row; flex-direction: row; -webkit-align-items: center; align-items: center; }
+.tp.split.ch-s .cm-art, .tp.ch-s .cm-art { width: 140px; height: 140px; margin: 0 20px 0 0; }
+.tp.split.ch-s .cm-meta, .tp.ch-s .cm-meta { text-align: left; }
+.tp.split.ch-s .cm-meta b, .tp.ch-s .cm-meta b { font-size: 20px; }
+.tp.split.ch-s .cm-main, .tp.ch-s .cm-main { -webkit-justify-content: flex-start; justify-content: flex-start; margin: 12px 0; }
+.tp.split.ch-s .cm-main .cbtn:not(.cbig), .tp.ch-s .cm-main .cbtn:not(.cbig) { width: 84px; height: 70px; margin: 0 10px 0 0; }
+.tp.split.ch-s .cm-main .cbig, .tp.ch-s .cm-main .cbig { width: 96px; height: 96px; border-radius: 48px; margin-right: 10px; }
+.tp.split.ch-s .cm-main .cbig .ic, .tp.ch-s .cm-main .cbig .ic { width: 36px !important; height: 36px !important; background-size: 36px 36px !important; }
+.tp.split.ch-s .cs-music .cv-row .cbtn, .tp.ch-s .cs-music .cv-row .cbtn { min-height: 56px; font-size: 15px; }
