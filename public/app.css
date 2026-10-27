@@ -1655,3 +1655,10 @@ body.app-phone .tp.c-port .cm-art { width: 180px; height: 180px; margin-bottom: 
 /* 音乐控件的「喜欢 / 音量− / 音量+ / 歌词」四个一行，不拆成两行 */
 body.app-phone .cs-music .cv-row { -webkit-flex-wrap: nowrap; flex-wrap: nowrap; margin-top: 4px; }
 body.app-phone .cs-music .cv-row .cbtn { -webkit-flex: 1 1 0; flex: 1 1 0; min-width: 0; margin: 0 4px; padding: 0 4px; font-size: 14px; white-space: nowrap; }
+/* 手机：页签占满左侧空位并左对齐（不再只占 46% 而截断「文件夹」）；竖屏磁贴贴顶排列，像 iOS 主屏 */
+body.app-phone .tabs { max-width: none; text-align: left; }
+@media (orientation: portrait) { body.app-phone .grid { margin: 6px 0 auto; } }
+/* 手机竖屏的浏览器控件：标签页和书签上下排，标签页多占一些 */
+body.app-phone .tp.c-port .bt-cols { -webkit-flex-direction: column; flex-direction: column; }
+body.app-phone .tp.c-port .bt-col + .bt-col { margin: 12px 0 0; -webkit-flex: 0 1 34%; flex: 0 1 34%; }
+body.app-phone .tabs { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 16px), transparent 100%); mask-image: linear-gradient(90deg, #000 calc(100% - 16px), transparent 100%); }
