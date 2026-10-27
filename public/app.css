@@ -1697,3 +1697,37 @@ body.app-narrow .clock { min-width: 0; margin-right: 6px; }
 /* 小磁贴里的大数字不换行（如「601.4 GB」） */
 .wg-big { white-space: nowrap; }
 .s-s .wg-big.sm { font-size: 22px; }
+
+/* ---------- 手机：iOS 主屏式的密排磁贴（竖屏 4 列、横屏 8 列，方形） ----------
+   小磁贴只留图标和短名称；宽磁贴保留「左名称、右图标」；副标题、背景大图标在手机上去掉，避免挤 */
+body.app-phone .tile { border-radius: 16px; }
+body.app-phone .ghost-art { display: none; }
+body.app-phone .txt small { display: none; }
+body.app-phone .s-s .txt, body.app-phone .s-t .txt { left: 5px; right: 5px; bottom: 7px; text-align: center; }
+body.app-phone .s-s .txt b, body.app-phone .s-t .txt b { font-size: 11.5px; line-height: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.app-phone .s-s .art { top: calc(var(--rh) * 0.13); width: calc(var(--rh) * 0.5); height: calc(var(--rh) * 0.5); margin-left: calc(var(--rh) * -0.25); }
+body.app-phone .s-w .txt { left: 12px; right: 45%; bottom: auto; top: 50%; -webkit-transform: translateY(-50%); transform: translateY(-50%); }
+body.app-phone .s-w .txt b, body.app-phone .s-l .txt b { font-size: 15px; line-height: 19px; }
+body.app-phone .tile.widget .wg { padding: 8px 10px; }
+/* 手机竖屏：Dock 保留上一首 / 下一首（宽度够用），迷你播放器自适应剩余宽度 */
+body.app-phone .dk[data-sys="prev"], body.app-phone .dk[data-sys="next"] { display: block; }
+body.app-phone .mini { -webkit-flex: 1; flex: 1; min-width: 0; }
+
+/* ---------- 手机：控件页与顶栏 ---------- */
+/* 竖屏顶栏只放页签和按钮：时钟让位给页签，页签可左右滑 */
+@media (orientation: portrait) { body.app-phone .bar .clock { display: none; } body.app-phone .tabs { padding-left: 0; } }
+/* AI 面板：输入框固定适中高度（打字时仍会进入输入布局放大），底部按钮一行放下不换行 */
+body.app-phone .pn-compose { -webkit-flex: none; flex: none; }
+body.app-phone .pn-compose textarea { -webkit-flex: none; flex: none; height: 120px; min-height: 0; font-size: 16px; }
+body.app-phone .tp.typing .pn-compose textarea { height: 160px; }
+body.app-phone .pn-chips { -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent); mask-image: linear-gradient(90deg, #000 85%, transparent); }
+body.app-phone .pn-row button { height: 52px; font-size: 14px; white-space: nowrap; padding: 0 6px; }
+body.app-phone .pn-voice svg { width: 16px; height: 16px; margin-right: 3px; }
+body.app-phone .pn-grid { grid-auto-rows: minmax(72px, auto); grid-gap: 8px; }
+body.app-phone .pn-act { font-size: 13px; }
+body.app-phone .pn-act svg { width: 22px; height: 22px; margin-bottom: 5px; }
+/* 音乐控件：封面缩小，给控制留空间 */
+body.app-phone .tp.c-port .cm-art { width: 180px; height: 180px; margin-bottom: 14px; }
+/* 音乐控件的「喜欢 / 音量− / 音量+ / 歌词」四个一行，不拆成两行 */
+body.app-phone .cs-music .cv-row { -webkit-flex-wrap: nowrap; flex-wrap: nowrap; margin-top: 4px; }
+body.app-phone .cs-music .cv-row .cbtn { -webkit-flex: 1 1 0; flex: 1 1 0; min-width: 0; margin: 0 4px; padding: 0 4px; font-size: 14px; white-space: nowrap; }
