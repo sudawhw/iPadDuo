@@ -1621,3 +1621,18 @@ body.app-narrow .clock { min-width: 0; margin-right: 6px; }
 
 /* 分段按钮至少 44pt 宽（苹果的最小触控尺寸） */
 .seg button { min-width: 44px; }
+
+/* ---------- 手机：iOS 主屏式的密排磁贴（竖屏 4 列、横屏 8 列，方形） ----------
+   小磁贴只留图标和短名称；宽磁贴保留「左名称、右图标」；副标题、背景大图标在手机上去掉，避免挤 */
+body.app-phone .tile { border-radius: 16px; }
+body.app-phone .ghost-art { display: none; }
+body.app-phone .txt small { display: none; }
+body.app-phone .s-s .txt, body.app-phone .s-t .txt { left: 5px; right: 5px; bottom: 7px; text-align: center; }
+body.app-phone .s-s .txt b, body.app-phone .s-t .txt b { font-size: 11.5px; line-height: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.app-phone .s-s .art { top: calc(var(--rh) * 0.13); width: calc(var(--rh) * 0.5); height: calc(var(--rh) * 0.5); margin-left: calc(var(--rh) * -0.25); }
+body.app-phone .s-w .txt { left: 12px; right: 45%; bottom: auto; top: 50%; -webkit-transform: translateY(-50%); transform: translateY(-50%); }
+body.app-phone .s-w .txt b, body.app-phone .s-l .txt b { font-size: 15px; line-height: 19px; }
+body.app-phone .tile.widget .wg { padding: 8px 10px; }
+/* 手机竖屏：Dock 保留上一首 / 下一首（宽度够用），迷你播放器自适应剩余宽度 */
+body.app-phone .dk[data-sys="prev"], body.app-phone .dk[data-sys="next"] { display: block; }
+body.app-phone .mini { -webkit-flex: 1; flex: 1; min-width: 0; }

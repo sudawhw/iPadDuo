@@ -315,12 +315,14 @@
     setClass(document.body, 'app-phone', phone);
     var inner = W - (phone ? 24 : W < 700 ? 28 : 44); // 减去页面左右内边距
     var landscape = window.innerWidth > window.innerHeight;
-    var cols = config.settings.columns || (phone ? (landscape ? 4 : 2) : inner < 600 ? 3 : landscape ? 6 : 4);
-    var rows = phone ? (landscape ? 2 : 4) : landscape ? 3 : 5;
+    // 手机用 iOS 主屏式的密排网格：竖屏 4 列、横屏 8 列，方形磁贴，行数按可用高度算出——
+    // 一页 15 个左右的磁贴在 iPhone 上也能一屏放下（两列布局要十几行，只能上下滚）
+    var cols = config.settings.columns || (phone ? (landscape ? 8 : 4) : inner < 600 ? 3 : landscape ? 6 : 4);
     GAP = phone ? 10 : 16;
     var colW = Math.floor((inner - GAP * (cols - 1)) / cols);
+    var rows = phone ? Math.max(2, Math.floor((H + GAP) / (Math.min(colW, 110) + GAP))) : landscape ? 3 : 5;
     var rh = Math.floor((H - GAP * (rows - 1)) / rows);
-    rh = Math.max(phone ? 72 : 96, Math.min(rh, Math.round(colW * 1.04), 230));
+    rh = Math.max(phone ? 64 : 96, Math.min(rh, Math.round(colW * (phone ? 1 : 1.04)), 230));
     metrics = { W: W, cols: cols, colW: colW, rh: rh, H: H, rows: rows, phone: phone };
     var track = $('track');
     track.style.setProperty('--rh', rh + 'px');
@@ -345,7 +347,7 @@
     var cells = editing ? 1 : 0;
     config.pages[i].tiles.forEach(function (t) { cells += t.size === 'l' ? 4 : (t.size === 'w' || t.size === 't') ? 2 : 1; });
     var need = Math.ceil(cells / metrics.cols), rh = metrics.rh;
-    if (need > metrics.rows) rh = Math.max(metrics.phone ? 80 : 104, Math.floor((metrics.H - GAP * (need - 1)) / need));
+    if (need > metrics.rows) rh = Math.max(metrics.phone ? 64 : 104, Math.floor((metrics.H - GAP * (need - 1)) / need));
     sec.style.setProperty('--rh', rh + 'px');
     setClass(sec, 'compact', rh < 128);
   }
@@ -1884,7 +1886,7 @@
       h += '<button type="button" class="pn-act" data-pn="' + a.id + '">' + picon(a.icon) + '<span>' + esc(a.label) + '</span></button>';
     });
     h += '</div><div class="pn-compose">' +
-      '<textarea id="pnText" placeholder="' + esc(p.composerHint || '输入内容…') + '（也可以点 iPad 键盘上的麦克风听写）" autocomplete="off" autocorrect="on" spellcheck="false">' + esc(keep) + '</textarea>' +
+      '<textarea id="pnText" placeholder="' + esc(p.composerHint || '输入内容…') + '（也可以点键盘上的麦克风听写）" autocomplete="off" autocorrect="on" spellcheck="false">' + esc(keep) + '</textarea>' +
       '<div class="pn-chips">' +
         ['继续', '总结一下', '翻译成英文', '解释一下', '给出代码'].map(function (c) { return '<button type="button" data-chip-text="' + c + '">' + c + '</button>'; }).join('') +
       '</div>' +
@@ -3296,7 +3298,7 @@
       '<div class="form-row"><label>外观（这台设备）</label>' + seg('theme', [{ k: 'dark', n: '深色' }, { k: 'light', n: '浅色' }, { k: 'auto', n: '跟随系统' }], store('deck-theme') || 'dark') + '</div>' +
       '<div class="form-row"><label>副屏画面传输（这台设备）</label>' + seg('rtc', [{ k: '', n: '自动（硬件视频优先）' }, { k: 'off', n: '兼容模式（JPEG）' }], store('deck-rtc') || '') +
         '<p class="hint">' + (RTC_OK ? '这台设备支持 WebRTC：Mac 用硬件编码 H.264 推流，iPad 硬件解码，延迟与流畅度明显更好；网络异常时自动退回兼容模式。' : '这台设备的系统（iOS 10 及更早）不支持 WebRTC，使用 JPEG 兼容模式。升级到 iOS 12 可获得更流畅的硬件视频。') + '</p></div>' +
-      '<div class="form-row"><label>点开文件夹磁贴</label>' + seg('folderBrowser', [{ k: '1', n: '在 iPad 上分栏浏览' }, { k: '', n: '在 Mac 上打开' }], s.folderBrowser === false ? '' : '1') + '</div>' +
+      '<div class="form-row"><label>点开文件夹磁贴</label>' + seg('folderBrowser', [{ k: '1', n: '在这台设备上分栏浏览' }, { k: '', n: '在 Mac 上打开' }], s.folderBrowser === false ? '' : '1') + '</div>' +
       '<div class="form-row"><label>触控板灵敏度（这台设备）</label>' + seg('pointerSpeed', [{ k: 'slow', n: '精细' }, { k: 'normal', n: '标准' }, { k: 'fast', n: '快速' }], store('deck-pointer-speed') || 'normal') + '</div>' +
       '<div class="form-row"><label>触控板加速</label>' + seg('pointerAccel', [{ k: 'on', n: '随手速加速' }, { k: 'off', n: '固定速度' }], store('deck-pointer-accel') || 'on') + '</div>' +
       (DEVICE.sidecar ? '<div class="form-row"><label>随航（把这台 iPad 变成 Mac 的扩展屏）</label>' +
@@ -3304,7 +3306,7 @@
         '<p class="hint">使用 macOS 自带的随航：需要与 Mac 登录同一 Apple 账户，并打开蓝牙、Wi-Fi 和「接力」。连接后 iPad 会变成扩展屏，iPadDuo 页面暂时被替换；在 iPad 随航侧边栏点「断开」即可回来。</p></div>' : '') +
       '<div class="form-row"><label>面板「按住说话」的语音键</label>' +
         seg('voiceKey', [{ k: 'fn', n: 'fn（豆包 / 微信输入法默认）' }, { k: 'ropt', n: '右 ⌥' }, { k: 'rcmd', n: '右 ⌘' }, { k: 'rctrl', n: '右 ⌃' }], s.voiceKey || 'fn') +
-        '<p class="hint">按住面板上的「按住说话」时，Mac 上会一直按着这个键：先把豆包输入法或微信输入法切成当前输入法，就能用它们的语音输入。也可以直接用 iPad 键盘上的麦克风听写。</p></div>' +
+        '<p class="hint">按住面板上的「按住说话」时，Mac 上会一直按着这个键：先把豆包输入法或微信输入法切成当前输入法，就能用它们的语音输入。也可以直接用键盘上的麦克风听写。</p></div>' +
       '<div class="form-row"><label>点开磁贴后</label>' + seg('autoStage', [{ k: '1', n: '自动显示对应控件' }, { k: '', n: '只打开应用 / 网页' }], s.autoStage === false ? '' : '1') + '</div>' +
       '<div class="form-row"><label>屏幕常亮</label>' + seg('keepAwake', ON, s.keepAwake === false ? '' : '1') +
         '<p class="hint">通过循环播放一段静音小视频阻止 iPad 自动锁屏，建议同时插着电源。</p></div>' +
