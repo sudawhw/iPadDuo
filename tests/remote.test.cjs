@@ -236,3 +236,16 @@ test('QQ Music up-next list is read from accessibility texts and stops at the fi
   assert.deepEqual(q, { total: 50, songs: ['两只恋人', 'High Fidelity (Album Version)'] });
   assert.equal(parseQQQueue('StaticText\t别的页面'), null);
 });
+test('finger-down hover moves the pointer using the displayed frame, and never during a drag', () => {
+  const a = backend(); try {
+    const s = a.socket(); a.send(s,{t:'screen',on:true,w:1024,fps:8,q:.55});
+    const c = a.children.find(c=>c.args[0]==='stream'); a.frame(c,{wid:11,x:0}); const old = messages(s).find(m=>m.t==='frame').meta;
+    a.frame(c,{wid:22,x:2000});
+    const serve = () => a.children.find(c=>c.args[0]==='serve');
+    a.send(s,{t:'hv',seq:1,frameId:old.frameId,nx:.25,ny:.75});
+    assert(serve().commands.at(-1).startsWith('hoverwin 11 0 0 1000 600 0.25 0.75 '), serve().commands.at(-1));
+    a.send(s,{t:'pd',seq:2,frameId:old.frameId,nx:.3,ny:.3}); const n = serve().commands.length;
+    a.send(s,{t:'hv',seq:3,frameId:old.frameId,nx:.9,ny:.9});
+    assert.equal(serve().commands.length, n, 'hover must not move the pointer while the button is held');
+  } finally {a.close();}
+});
