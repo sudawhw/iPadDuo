@@ -273,11 +273,12 @@
     p.tiles.forEach(function (t) { html += tileHtml(t); });
     html += '<div class="tile add" data-add="1"><div class="plus">＋<small>添加磁贴</small></div></div>';
     grid.innerHTML = html;
-    layoutPage(i);
+    // 增删磁贴让最满的一页变了：所有页一起重算行高，保持一致
+    if (metrics.cols && pageRows(p, metrics.cols) > metrics.need) layout(); else layoutPage(i);
   }
 
   // 只重绘当前页（编辑磁贴后）
-  function renderGrid() { renderPage(pageIndex); }
+  function renderGrid() { renderPage(pageIndex); layout(); }
 
   function renderPages() {
     var html = '';
@@ -323,9 +324,18 @@
     var rows = phone ? Math.max(2, Math.floor((H + GAP) / (Math.min(colW, 110) + GAP))) : landscape ? 3 : 5;
     var rh = Math.floor((H - GAP * (rows - 1)) / rows);
     rh = Math.max(phone ? 64 : 96, Math.min(rh, Math.round(colW * (phone ? 1 : 1.04)), 230));
-    metrics = { W: W, cols: cols, colW: colW, rh: rh, H: H, rows: rows, phone: phone };
+    // 所有页面共用一套网格：同样的列数、行高和顶边。按最满的那一页定行高（放不下才整体压缩），
+    // 翻页时磁贴不会忽大忽小、内容也不会忽高忽低。
+    var need = 1;
+    for (var p = 0; p < config.pages.length; p++) need = Math.max(need, pageRows(config.pages[p], cols));
+    if (need > rows) rh = Math.max(phone ? 64 : 104, Math.floor((H - GAP * (need - 1)) / need));
+    var shown = Math.min(need, Math.floor((H + GAP) / (rh + GAP)));
+    // iPad：把「最满那一页」的高度整体居中，各页用同一个顶边；手机像 iOS 主屏一样贴顶
+    var top = phone ? 0 : Math.max(0, Math.floor((H - shown * rh - GAP * (shown - 1)) / 2));
+    metrics = { W: W, cols: cols, colW: colW, rh: rh, H: H, rows: rows, need: need, phone: phone };
     var track = $('track');
     track.style.setProperty('--rh', rh + 'px');
+    track.style.setProperty('--gtop', top + 'px');
     track.className = 'track' + (rh < 128 ? ' compact' : '');
     var secs = track.children;
     for (var i = 0; i < secs.length; i++) {
@@ -335,21 +345,34 @@
     positionTrack(false);
   }
 
+  // 按 grid-auto-flow: dense 的规则摆一遍，算出这一页实际占几行（宽/高/大磁贴会留空位，不能简单相除）
+  function pageRows(page, cols) {
+    var occ = [], rows = 0;
+    function fits(r, c, w, h) {
+      if (c + w > cols) return false;
+      for (var y = r; y < r + h; y++) for (var x = c; x < c + w; x++) if (occ[y] && occ[y][x]) return false;
+      return true;
+    }
+    function place(w, h) {
+      w = Math.min(w, cols);
+      for (var r = 0; ; r++) {
+        for (var c = 0; c < cols; c++) {
+          if (!fits(r, c, w, h)) continue;
+          for (var y = r; y < r + h; y++) { occ[y] = occ[y] || []; for (var x = c; x < c + w; x++) occ[y][x] = 1; }
+          rows = Math.max(rows, r + h); return;
+        }
+      }
+    }
+    page.tiles.forEach(function (t) { place(t.size === 'w' || t.size === 'l' ? 2 : 1, t.size === 't' || t.size === 'l' ? 2 : 1); });
+    if (editing) place(1, 1); // 「添加磁贴」
+    return Math.max(rows, 1);
+  }
+
   function layoutPage(i) {
     var sec = $('track').children[i];
     if (!sec || !config.pages[i]) return;
     sec.style.width = metrics.W + 'px';
-    var used = editing ? 1 : 0;
-    config.pages[i].tiles.forEach(function (t) { used += (t.size === 'w' || t.size === 'l') ? 2 : 1; });
-    var c = used > 0 && used < metrics.cols ? used : metrics.cols;
-    sec.firstChild.style.gridTemplateColumns = 'repeat(' + c + ', ' + metrics.colW + 'px)';
-    // 磁贴多于一屏时先压缩行高；手机允许更紧凑的行高，但保持可读的图标和文字。
-    var cells = editing ? 1 : 0;
-    config.pages[i].tiles.forEach(function (t) { cells += t.size === 'l' ? 4 : (t.size === 'w' || t.size === 't') ? 2 : 1; });
-    var need = Math.ceil(cells / metrics.cols), rh = metrics.rh;
-    if (need > metrics.rows) rh = Math.max(metrics.phone ? 64 : 104, Math.floor((metrics.H - GAP * (need - 1)) / need));
-    sec.style.setProperty('--rh', rh + 'px');
-    setClass(sec, 'compact', rh < 128);
+    sec.firstChild.style.gridTemplateColumns = 'repeat(' + metrics.cols + ', ' + metrics.colW + 'px)';
   }
 
   // ---------- 翻页（平滑跟手） ----------

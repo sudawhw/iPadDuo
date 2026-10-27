@@ -130,8 +130,8 @@ body.editing .edit-bar { display: -webkit-flex; display: flex; }
   -webkit-transform: translate3d(0, 0, 0); transform: translate3d(0, 0, 0);
 }
 .track.anim {
-  -webkit-transition: -webkit-transform 0.24s cubic-bezier(0.22, 0.8, 0.24, 1);
-  transition: transform 0.24s cubic-bezier(0.22, 0.8, 0.24, 1);
+  -webkit-transition: -webkit-transform 0.3s cubic-bezier(0.2, 0.85, 0.25, 1);
+  transition: transform 0.3s cubic-bezier(0.2, 0.85, 0.25, 1);
 }
 
 .page {
@@ -148,7 +148,7 @@ body.editing .edit-bar { display: -webkit-flex; display: flex; }
 
 .grid {
   -webkit-flex: none; flex: none;
-  margin: auto 0; /* 内容少时垂直居中，溢出时自动贴顶可滚动 */
+  margin: var(--gtop, 0) 0 auto; /* 各页共用同一个顶边（由 layout() 按最满的一页算出），翻页时内容不会忽高忽低 */
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   grid-auto-rows: var(--rh);
@@ -205,8 +205,9 @@ body.editing .edit-bar { display: -webkit-flex; display: flex; }
 .art.web img { border-radius: 23%; }
 .art.plate { background: #fff; border-radius: 24%; padding: 13%; box-shadow: 0 8px 18px -8px rgba(0, 0, 0, 0.5); }
 .art.plate img { border-radius: 12%; }
-.art.glyph { padding: 14%; }
-.art.glyph svg { stroke: #fff; }
+.art.glyph { border-radius: 23%; background: rgba(255, 255, 255, 0.18); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14), 0 8px 18px -8px rgba(0, 0, 0, 0.45); } /* 和应用图标一样大的底板，快捷操作页不再显得图标特别小 */
+.art.glyph svg { width: 54%; height: 54%; margin: 23% auto 0; stroke: #fff; stroke-width: 1.8; } /* 百分比相对图标本身；padding 的百分比会按整块磁贴算，图标被挤得很小 */
+.tier-lite .art.glyph { box-shadow: none; }
 .art.mono {
   font-size: calc(var(--rh) * 0.28); line-height: calc(var(--rh) * 0.56);
   text-align: center; font-weight: 600;
